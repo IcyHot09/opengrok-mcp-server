@@ -14,7 +14,7 @@
 
 ## Quick Start
 
-**Option 1 — VS Code Extension (recommended)**
+**Option 1 — VS Code Extension**
 
 Install **OpenGrok MCP** from the VS Code Marketplace, or search "OpenGrok" in the Extensions panel. The configuration panel opens on first launch — enter your OpenGrok endpoint, username, and password, then click **Save Settings** and reload when prompted.
 
