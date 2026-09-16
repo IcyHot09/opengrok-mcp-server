@@ -20,19 +20,22 @@ describe('capCodeModeResult', () => {
     expect(capCodeModeResult(s, 1000)).toBe(s);
   });
 
-  it('truncates a JSON array at element boundaries', () => {
+  it('truncates a JSON array at element boundaries and produces valid JSON', () => {
     const arr = Array.from({ length: 10 }, (_, i) => ({ id: i, value: 'x'.repeat(100) }));
     const full = JSON.stringify(arr);
-    // Allow only ~3 elements worth of bytes
-    const limit = Buffer.byteLength(JSON.stringify(arr.slice(0, 3)), 'utf8') + 20;
+    // Allow only ~3 elements worth of bytes + room for the truncation marker
+    const limit = Buffer.byteLength(JSON.stringify(arr.slice(0, 3)), 'utf8') + 100;
 
     const result = capCodeModeResult(full, limit);
 
-    // Must be valid JSON up to the truncation point
-    const parsed = JSON.parse(result.split('\n')[0]) as unknown[];
-    expect(parsed.length).toBeGreaterThanOrEqual(1);
-    expect(parsed.length).toBeLessThan(10);
-    expect(result).toContain('[truncated:');
+    // Must be valid JSON
+    const parsed = JSON.parse(result) as unknown[];
+    expect(parsed.length).toBeGreaterThanOrEqual(2); // at least 1 element + marker
+    expect(parsed.length).toBeLessThanOrEqual(10);
+    // Last element is the truncation marker
+    const marker = parsed[parsed.length - 1] as Record<string, unknown>;
+    expect(marker._truncated).toBe(true);
+    expect(marker._droppedCount).toBeGreaterThan(0);
   });
 
   it('falls back to byte truncation for non-JSON strings', () => {

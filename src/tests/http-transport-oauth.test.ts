@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { scopeToRole } from '../server/http-transport.js';
+import { scopeToRole } from '../server/transport/http-transport.js';
 
 describe('scopeToRole', () => {
   it('maps opengrok:admin to admin', () => {
@@ -28,7 +28,7 @@ describe('/.well-known/oauth-protected-resource', () => {
     process.env.OPENGROK_RESOURCE_URI = 'https://opengrok.example.com';
     process.env.OPENGROK_AUTH_SERVERS = 'https://auth.example.com';
 
-    const { startHttpTransport } = await import('../server/http-transport.js');
+    const { startHttpTransport } = await import('../server/transport/http-transport.js');
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
 
     const { close } = await startHttpTransport(
@@ -80,7 +80,7 @@ describe('OPENGROK_STRICT_OAUTH validation', () => {
     process.env.OPENGROK_STRICT_OAUTH = 'true';
     delete process.env.OPENGROK_JWKS_URI;
 
-    const { startHttpTransport } = await import('../server/http-transport.js');
+    const { startHttpTransport } = await import('../server/transport/http-transport.js');
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
 
     await expect(

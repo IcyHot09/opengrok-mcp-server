@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { IncomingMessage } from 'node:http';
-import { buildSafeUrl, isPrivateIp, assertSafePath } from '../server/client.js';
-import { parseWebSearchResults, parseDirectoryListing } from '../server/parsers.js';
-import { escapeMarkdownField } from '../server/formatters.js';
-import { validateBearerToken } from '../server/http-transport.js';
+import { buildSafeUrl, isPrivateIp, assertSafePath } from '../server/client/index.js';
+import { parseWebSearchResults, parseDirectoryListing } from '../server/parsers/index.js';
+import { escapeMarkdownField } from '../server/formatters/index.js';
+import { validateBearerToken } from '../server/transport/http-transport.js';
 
 describe('buildSafeUrl SSRF protection', () => {
   const base = new URL('https://opengrok.company.com/source/');

@@ -9,6 +9,7 @@ describe('buildEnv()', () => {
   });
 
   it('omits OPENGROK_ENABLE_FILES_API when false (default)', () => {
+
     const env = buildEnv({ url: 'https://og.example.com/', enableFilesApi: false });
     expect(env).not.toHaveProperty('OPENGROK_ENABLE_FILES_API');
   });
@@ -61,7 +62,82 @@ describe('buildEnv()', () => {
       samplingMaxTokens: '128',
       auditLogFile: '/tmp/audit.csv',
       rateLimitRpm: '120',
+      passwordFile: '/run/secrets/opengrok-password',
+      maxResponseBytes: '8192',
+      strictSsrf: true,
+      jwtIssuer: 'https://idp.example.com/',
+      grammarDir: '/opt/grammars',
     };
     expect(config.url).toBeTruthy();
+  });
+
+  it('sets OPENGROK_PASSWORD_FILE when provided', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', passwordFile: '/run/secrets/pw' });
+    expect(env['OPENGROK_PASSWORD_FILE']).toBe('/run/secrets/pw');
+  });
+
+  it('omits OPENGROK_PASSWORD_FILE when blank', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', passwordFile: '' });
+    expect(env).not.toHaveProperty('OPENGROK_PASSWORD_FILE');
+  });
+
+  it('omits OPENGROK_MAX_RESPONSE_BYTES at default value 0', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', maxResponseBytes: '0' });
+    expect(env).not.toHaveProperty('OPENGROK_MAX_RESPONSE_BYTES');
+  });
+
+  it('sets OPENGROK_MAX_RESPONSE_BYTES when non-default', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', maxResponseBytes: '8192' });
+    expect(env['OPENGROK_MAX_RESPONSE_BYTES']).toBe('8192');
+  });
+
+  it('omits OPENGROK_STRICT_SSRF when false (default)', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', strictSsrf: false });
+    expect(env).not.toHaveProperty('OPENGROK_STRICT_SSRF');
+  });
+
+  it('sets OPENGROK_STRICT_SSRF=true when true', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', strictSsrf: true });
+    expect(env['OPENGROK_STRICT_SSRF']).toBe('true');
+  });
+
+  it('sets OPENGROK_JWT_ISSUER when provided', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', jwtIssuer: 'https://idp.example.com/' });
+    expect(env['OPENGROK_JWT_ISSUER']).toBe('https://idp.example.com/');
+  });
+
+  it('omits OPENGROK_JWT_ISSUER when blank', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', jwtIssuer: '' });
+    expect(env).not.toHaveProperty('OPENGROK_JWT_ISSUER');
+  });
+
+  it('sets OPENGROK_ENABLE_MEMORY_TOOLS=true when true (default off)', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', enableMemoryTools: true });
+    expect(env['OPENGROK_ENABLE_MEMORY_TOOLS']).toBe('true');
+  });
+
+  it('omits OPENGROK_ENABLE_MEMORY_TOOLS when false (default)', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', enableMemoryTools: false });
+    expect(env).not.toHaveProperty('OPENGROK_ENABLE_MEMORY_TOOLS');
+  });
+
+  it('sets OPENGROK_ENABLE_ELICITATION=false when false (default on)', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', enableElicitation: false });
+    expect(env['OPENGROK_ENABLE_ELICITATION']).toBe('false');
+  });
+
+  it('omits OPENGROK_ENABLE_ELICITATION when true (default)', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', enableElicitation: true });
+    expect(env).not.toHaveProperty('OPENGROK_ENABLE_ELICITATION');
+  });
+
+  it('sets OPENGROK_GRAMMAR_DIR when provided', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', grammarDir: '/opt/grammars' });
+    expect(env['OPENGROK_GRAMMAR_DIR']).toBe('/opt/grammars');
+  });
+
+  it('omits OPENGROK_GRAMMAR_DIR when blank', () => {
+    const env = buildEnv({ url: 'https://og.example.com/', grammarDir: '' });
+    expect(env).not.toHaveProperty('OPENGROK_GRAMMAR_DIR');
   });
 });

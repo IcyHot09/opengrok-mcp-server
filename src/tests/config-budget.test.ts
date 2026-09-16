@@ -9,7 +9,7 @@ import type { Config } from '../server/config.js';
 
 describe('BUDGET_LIMITS', () => {
   it('minimal has correct byte/line values', () => {
-    expect(BUDGET_LIMITS.minimal.maxResponseBytes).toBe(4_096);
+    expect(BUDGET_LIMITS.minimal.maxResponseBytes).toBe(8_192);
     expect(BUDGET_LIMITS.minimal.maxInlineLines).toBe(50);
     expect(BUDGET_LIMITS.minimal.contextLines).toBe(3);
     expect(BUDGET_LIMITS.minimal.maxSearchResults).toBe(5);
@@ -17,7 +17,7 @@ describe('BUDGET_LIMITS', () => {
   });
 
   it('standard has correct byte/line values', () => {
-    expect(BUDGET_LIMITS.standard.maxResponseBytes).toBe(8_192);
+    expect(BUDGET_LIMITS.standard.maxResponseBytes).toBe(16_384);
     expect(BUDGET_LIMITS.standard.maxInlineLines).toBe(100);
     expect(BUDGET_LIMITS.standard.contextLines).toBe(5);
     expect(BUDGET_LIMITS.standard.maxSearchResults).toBe(10);
@@ -25,7 +25,7 @@ describe('BUDGET_LIMITS', () => {
   });
 
   it('generous has correct byte/line values', () => {
-    expect(BUDGET_LIMITS.generous.maxResponseBytes).toBe(16_384);
+    expect(BUDGET_LIMITS.generous.maxResponseBytes).toBe(32_768);
     expect(BUDGET_LIMITS.generous.maxInlineLines).toBe(200);
     expect(BUDGET_LIMITS.generous.contextLines).toBe(10);
     expect(BUDGET_LIMITS.generous.maxSearchResults).toBe(25);
@@ -49,6 +49,10 @@ describe('loadConfig', () => {
     delete process.env.OPENGROK_BASE_URL;
     delete process.env.OPENGROK_CONTEXT_BUDGET;
     delete process.env.OPENGROK_CODE_MODE;
+    delete process.env.OPENGROK_ENABLE_MEMORY_TOOLS;
+    delete process.env.OPENGROK_ENABLE_ELICITATION;
+    delete process.env.OPENGROK_ENABLE_FILES_API;
+    delete process.env.OPENGROK_ENABLE_OBSERVATION_MASKER;
     delete process.env.OPENGROK_MEMORY_BANK_DIR;
     delete process.env.OPENGROK_TIMEOUT;
   });
@@ -87,6 +91,46 @@ describe('loadConfig', () => {
     process.env.OPENGROK_CODE_MODE = 'false';
     const cfg = loadConfig();
     expect(cfg.OPENGROK_CODE_MODE).toBe(false);
+  });
+
+  it('defaults OPENGROK_ENABLE_MEMORY_TOOLS to false', () => {
+    delete process.env.OPENGROK_ENABLE_MEMORY_TOOLS;
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_MEMORY_TOOLS).toBe(false);
+  });
+
+  it('parses OPENGROK_ENABLE_MEMORY_TOOLS=true to boolean true', () => {
+    process.env.OPENGROK_ENABLE_MEMORY_TOOLS = 'true';
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_MEMORY_TOOLS).toBe(true);
+  });
+
+  it('parses OPENGROK_ENABLE_MEMORY_TOOLS=false to boolean false', () => {
+    process.env.OPENGROK_ENABLE_MEMORY_TOOLS = 'false';
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_MEMORY_TOOLS).toBe(false);
+  });
+
+  it('defaults OPENGROK_ENABLE_ELICITATION to true', () => {
+    delete process.env.OPENGROK_ENABLE_ELICITATION;
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_ELICITATION).toBe(true);
+  });
+
+  it('parses OPENGROK_ENABLE_ELICITATION=false to boolean false', () => {
+    process.env.OPENGROK_ENABLE_ELICITATION = 'false';
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_ELICITATION).toBe(false);
+  });
+
+  it('parses "false" to boolean false for FILES_API and OBSERVATION_MASKER', () => {
+    process.env.OPENGROK_ENABLE_FILES_API = 'false';
+    process.env.OPENGROK_ENABLE_OBSERVATION_MASKER = 'false';
+    const cfg = loadConfig();
+    expect(cfg.OPENGROK_ENABLE_FILES_API).toBe(false);
+    expect(cfg.OPENGROK_ENABLE_OBSERVATION_MASKER).toBe(false);
+    delete process.env.OPENGROK_ENABLE_FILES_API;
+    delete process.env.OPENGROK_ENABLE_OBSERVATION_MASKER;
   });
 
   it('defaults OPENGROK_MEMORY_BANK_DIR to empty string', () => {

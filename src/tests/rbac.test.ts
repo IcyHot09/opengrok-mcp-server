@@ -2,7 +2,7 @@
  * Tests for RBAC (Role-Based Access Control) for multi-user HTTP deployments (Task 5.10)
  */
 import { describe, it, expect } from "vitest";
-import { parseRbacConfig, hasPermission, type Role } from "../server/rbac.js";
+import { parseRbacConfig, hasPermission, type Role } from "../server/transport/rbac.js";
 
 // ---------------------------------------------------------------------------
 // Unit tests for RBAC functions
@@ -65,25 +65,25 @@ describe("RBAC — parseRbacConfig", () => {
 
 describe("RBAC — hasPermission", () => {
   it("admin has permission for all tools", () => {
-    expect(hasPermission("admin", "opengrok_search")).toBe(true);
+    expect(hasPermission("admin", "opengrok_search_code")).toBe(true);
     expect(hasPermission("admin", "opengrok_update_memory")).toBe(true);
     expect(hasPermission("admin", "opengrok_execute")).toBe(true);
     expect(hasPermission("admin", "unknown_tool")).toBe(true);
   });
 
   it("developer has explicit allow-list (no wildcard)", () => {
-    expect(hasPermission("developer", "opengrok_search")).toBe(true);
-    expect(hasPermission("developer", "opengrok_execute")).toBe(true);
     expect(hasPermission("developer", "opengrok_search_code")).toBe(true);
+    expect(hasPermission("developer", "opengrok_execute")).toBe(true);
+    expect(hasPermission("developer", "opengrok_find_file")).toBe(true);
     expect(hasPermission("developer", "unknown_tool")).toBe(false);
   });
 
   it("readonly has permission only for read-only tools", () => {
-    expect(hasPermission("readonly", "opengrok_search")).toBe(true);
+    expect(hasPermission("readonly", "opengrok_api")).toBe(true);
     expect(hasPermission("readonly", "opengrok_search_code")).toBe(true);
     expect(hasPermission("readonly", "opengrok_get_file_content")).toBe(true);
     expect(hasPermission("readonly", "opengrok_get_file_history")).toBe(true);
-    expect(hasPermission("readonly", "opengrok_get_symbol_info")).toBe(true);
+    expect(hasPermission("readonly", "opengrok_get_symbol_context")).toBe(true);
     expect(hasPermission("readonly", "opengrok_blame")).toBe(true);
     expect(hasPermission("readonly", "opengrok_what_changed")).toBe(true);
     expect(hasPermission("readonly", "opengrok_index_health")).toBe(true);
@@ -98,24 +98,39 @@ describe("RBAC — hasPermission", () => {
     expect(hasPermission("readonly", "opengrok_read_memory")).toBe(false);
   });
 
-  it("developer allowed on all developer tools", () => {
+  it("developer allowed on all registered tools", () => {
     const devTools = [
-      "opengrok_search",
+      "opengrok_api",
+      "opengrok_execute",
+      "opengrok_memory_status",
+      "opengrok_read_memory",
+      "opengrok_update_memory",
       "opengrok_search_code",
+      "opengrok_search_and_read",
+      "opengrok_batch_search",
+      "opengrok_find_file",
+      "opengrok_browse_directory",
+      "opengrok_list_projects",
       "opengrok_get_file_content",
       "opengrok_get_file_history",
-      "opengrok_get_symbol_info",
-      "opengrok_batch_search",
+      "opengrok_get_file_annotate",
+      "opengrok_get_file_symbols",
+      "opengrok_get_symbol_context",
+      "opengrok_search_suggest",
       "opengrok_what_changed",
       "opengrok_blame",
       "opengrok_dependency_map",
       "opengrok_search_pattern",
       "opengrok_index_health",
-      "opengrok_memory_status",
-      "opengrok_read_memory",
-      "opengrok_update_memory",
-      "opengrok_execute",
+      "opengrok_get_file_diff",
+      "opengrok_get_compile_info",
       "opengrok_call_graph",
+      "opengrok_get_all_matches",
+      "opengrok_get_file_history_with_files",
+      "opengrok_get_download_url",
+      "opengrok_list_groups",
+      "opengrok_get_suggest_popularity",
+      "opengrok_get_project_repositories",
     ];
     for (const tool of devTools) {
       expect(hasPermission("developer", tool)).toBe(true);

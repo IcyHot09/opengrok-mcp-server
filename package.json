@@ -2,7 +2,7 @@
   "name": "opengrok-mcp-server",
   "displayName": "OpenGrok MCP Server",
   "description": "MCP server bridging OpenGrok search engine with AI for instant context across massive codebases",
-  "version": "9.2.14",
+  "version": "9.6.0",
   "mcpName": "io.github.IcyHot09/opengrok-mcp-server",
   "license": "PolyForm-Noncommercial-1.0.0",
   "publisher": "IcyHot09",
@@ -38,6 +38,7 @@
   },
   "pricing": "Free",
   "activationEvents": [
+    "onStartupFinished",
     "onExtension:github.copilot-chat",
     "onCommand:opengrok-mcp.configureUI",
     "onCommand:opengrok-mcp.test",
@@ -59,7 +60,7 @@
   },
   "files": [
     "out/server/",
-    "out/webview/",
+    "out/grammars/",
     "images/",
     "README.md",
     "LICENSE"
@@ -120,11 +121,17 @@
           "markdownDescription": "**Code Mode (Recommended)** — Uses a sandboxed JavaScript runtime for multi-step code investigations. Reduces AI token usage by ~90%. Maps to `OPENGROK_CODE_MODE` env var.",
           "order": 4
         },
+        "opengrok-mcp.enableMemoryTools": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "**Memory tools** — Persistent investigation notes across sessions (adds 3 Code Mode tools: memory status, read, update). Turn on for the full 5-tool Code Mode. Maps to `OPENGROK_ENABLE_MEMORY_TOOLS` env var.",
+          "order": 5
+        },
         "opengrok-mcp.defaultProject": {
           "type": "string",
           "default": "",
           "markdownDescription": "Scope all AI searches to this project by default. Leave blank to search all indexed projects. Maps to `OPENGROK_DEFAULT_PROJECT` env var.",
-          "order": 5
+          "order": 6
         },
         "opengrok-mcp.contextBudget": {
           "type": "string",
@@ -134,25 +141,25 @@
             "generous"
           ],
           "enumDescriptions": [
-            "Compact (4 KB) — fewer tokens, lower detail",
-            "Standard (8 KB) — balanced, recommended",
-            "Detailed (16 KB) — more context, more tokens"
+            "Compact (8 KB) — fewer tokens, lower detail",
+            "Standard (16 KB) — balanced, recommended",
+            "Detailed (32 KB) — more context, more tokens"
           ],
           "default": "standard",
           "markdownDescription": "Controls how much context the AI receives per response. Compact uses fewer tokens; Detailed provides more context. Maps to `OPENGROK_CONTEXT_BUDGET` env var.",
-          "order": 6
+          "order": 7
         },
         "opengrok-mcp.enableElicitation": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "markdownDescription": "**Interactive AI Prompts** — The AI pauses to ask you questions during investigations (e.g., choosing a project, disambiguating files). Requires Claude Code v2.1.76+ or a client that supports MCP Elicitation. Maps to `OPENGROK_ENABLE_ELICITATION` env var.",
-          "order": 7
+          "order": 8
         },
         "opengrok-mcp.proxy": {
           "type": "string",
           "default": "",
           "markdownDescription": "Route requests through an HTTP proxy (e.g. `http://proxy.company.com:8080`). Credentials are forwarded — use only with trusted proxies. Leave blank for direct connection.",
-          "order": 8
+          "order": 9
         },
         "opengrok-mcp.apiVersion": {
           "type": "string",
@@ -166,7 +173,7 @@
           ],
           "default": "v1",
           "markdownDescription": "OpenGrok REST API version. v1 works with all versions. Select v2 only for call graph features (requires OpenGrok 1.12+).",
-          "order": 9
+          "order": 10
         },
         "opengrok-mcp.responseFormatOverride": {
           "type": "string",
@@ -190,39 +197,39 @@
           ],
           "default": "",
           "markdownDescription": "Override how search results and code are formatted for the AI. Auto is best for most users. Maps to `OPENGROK_RESPONSE_FORMAT_OVERRIDE` env var.",
-          "order": 10
+          "order": 11
         },
         "opengrok-mcp.memoryBankDir": {
           "type": "string",
           "default": "",
           "markdownDescription": "Where the AI stores investigation notes between sessions. Leave blank to use the workspace folder (`.opengrok/memory-bank/`). Maps to `OPENGROK_MEMORY_BANK_DIR` env var.",
-          "order": 11
+          "order": 12
         },
         "opengrok-mcp.compileDbPaths": {
           "title": "C/C++ Compile DB Paths",
           "type": "string",
           "default": "",
           "markdownDescription": "Paths to `compile_commands.json` for C/C++ compiler flag extraction. Leave blank for automatic workspace discovery. Maps to `OPENGROK_LOCAL_COMPILE_DB_PATHS` env var.",
-          "order": 12,
+          "order": 13,
           "scope": "window"
         },
         "opengrok-mcp.enableFilesApi": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Files API Cache** — Avoids re-uploading unchanged investigation notes to the AI. Requires Files API support in your MCP client. Maps to `OPENGROK_ENABLE_FILES_API` env var.",
-          "order": 13
+          "order": 14
         },
         "opengrok-mcp.enableSampling": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**AI Sampling** — Allow the server to request LLM completions for error explanations and summaries. Off by default to avoid consuming premium requests (e.g. GitHub Copilot). Maps to `OPENGROK_ENABLE_SAMPLING` env var.",
-          "order": 14
+          "order": 15
         },
         "opengrok-mcp.samplingModel": {
           "type": "string",
           "default": "",
           "markdownDescription": "Preferred model for AI sampling (error explanations, query reformulation). Leave blank for the client default. Maps to `OPENGROK_SAMPLING_MODEL` env var.",
-          "order": 15
+          "order": 16
         },
         "opengrok-mcp.samplingMaxTokens": {
           "type": "integer",
@@ -230,47 +237,54 @@
           "minimum": 64,
           "maximum": 4096,
           "markdownDescription": "Maximum tokens for AI sampling responses. Range: 64–4096. Maps to `OPENGROK_SAMPLING_MAX_TOKENS` env var.",
-          "order": 16
+          "order": 17
         },
         "opengrok-mcp.auditLogFile": {
           "type": "string",
           "default": "",
           "markdownDescription": "Path to write structured audit events (tool invocations, elicitation, errors). Appends CSV/JSON. Leave blank to disable. Maps to `OPENGROK_AUDIT_LOG_FILE` env var.",
-          "order": 17
+          "order": 18
         },
         "opengrok-mcp.rateLimitRpm": {
           "type": "integer",
           "default": 60,
           "minimum": 1,
           "markdownDescription": "Maximum requests per minute sent to the OpenGrok server. Default: 60. Maps to `OPENGROK_RATELIMIT_RPM` env var.",
-          "order": 18
+          "order": 19
         },
         "opengrok-mcp.timeout": {
           "type": "integer",
           "default": 30,
           "minimum": 1,
           "markdownDescription": "HTTP request timeout in seconds for OpenGrok API calls. Increase for slow servers. Default: 30. Maps to `OPENGROK_TIMEOUT` env var.",
-          "order": 19
+          "order": 20
         },
         "opengrok-mcp.defaultMaxResults": {
           "type": "integer",
           "default": 25,
           "minimum": 1,
           "markdownDescription": "Default maximum number of results returned per search query. Default: 25. Maps to `OPENGROK_DEFAULT_MAX_RESULTS` env var.",
-          "order": 20
+          "order": 21
         },
         "opengrok-mcp.enableObservationMasker": {
           "type": "boolean",
           "default": false,
           "markdownDescription": "**Observation Masker** — Prepend compact history summaries to `opengrok_execute` results after N turns. Only useful for MCP clients that truncate context. No benefit for Claude Code or Cursor. Maps to `OPENGROK_ENABLE_OBSERVATION_MASKER` env var.",
-          "order": 21
+          "order": 22
         },
         "opengrok-mcp.observationMaskerTurns": {
           "type": "integer",
           "default": 10,
           "minimum": 1,
           "markdownDescription": "Number of the most-recent `opengrok_execute` results to keep as full text. Once this many results accumulate, older ones are replaced with compact summaries in future result headers. Default: 10. Maps to `OPENGROK_OBSERVATION_MASKER_TURNS` env var.",
-          "order": 22
+          "order": 23
+        },
+        "opengrok-mcp.maxResponseBytes": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "markdownDescription": "Hard cap on response payload size in bytes. Overrides the context-budget default. Set to 0 to use the context budget tier (recommended). Maps to `OPENGROK_MAX_RESPONSE_BYTES` env var.",
+          "order": 24
         }
       }
     }
@@ -280,6 +294,7 @@
     "prepublishOnly": "npm run package",
     "clean": "rm -rf out/",
     "compile": "node esbuild.js",
+    "copy-grammars": "node scripts/copy-grammars.js",
     "watch": "node esbuild.js --watch",
     "package": "node esbuild.js --production",
     "test": "vitest run",
@@ -289,6 +304,7 @@
     "lint": "tsc --noEmit && eslint src/",
     "typecheck": "tsc --noEmit",
     "lint:fix": "eslint src/ --fix",
+    "generate:spec": "node scripts/generate-spec-runner.js",
     "validate": "npm run typecheck && npm run lint && npm run test",
     "vsix": "node scripts/build-vsix.js",
     "version:patch": "npm version patch --no-git-tag-version",
@@ -298,28 +314,35 @@
   "dependencies": {
     "@clack/prompts": "^1.1.0",
     "@iarna/toml": "^2.2.5",
-    "@jitl/quickjs-ng-wasmfile-release-sync": "^0.31.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
-    "@napi-rs/keyring": "^1.2.0",
-    "@sebastianwessel/quickjs": "^3.0.1",
-    "@toon-format/toon": "^2.1.0",
+    "@jitl/quickjs-ng-wasmfile-release-sync": "^0.32.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@napi-rs/keyring": "^1.3.0",
+    "@sebastianwessel/quickjs": "^3.1.0",
+    "@toon-format/toon": "^4.1.1",
     "he": "^1.2.0",
-    "jose": "^6.2.2",
-    "js-yaml": "^4.1.1",
+    "ink": "^7.1.1",
+    "jose": "^6.2.10",
+    "js-yaml": "^5.3.0",
     "minimatch": "^10.2.5",
-    "node-html-parser": "^6.1.0",
-    "p-retry": "^7.0.0",
-    "undici": "^7.24.2",
+    "node-html-parser": "^9.0.1",
+    "p-retry": "^8.0.0",
+    "react": "^19.2.8",
+    "undici": "^8.10.0",
+    "web-tree-sitter": "^0.26.13",
     "zod": "^4.0.0"
   },
   "overrides": {
-    "test-exclude": "^8.0.0"
+    "test-exclude": "^8.0.0",
+    "@sebastianwessel/quickjs": {
+      "memfs": "4.55.0"
+    }
   },
   "devDependencies": {
     "@types/he": "^1.2.3",
     "@types/js-yaml": "^4.0.9",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.18",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
@@ -328,6 +351,7 @@
     "esbuild": "^0.25.0",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
+    "tree-sitter-wasm": "^1.1.3",
     "typescript": "^5.3.0",
     "typescript-eslint": "^8.56.1",
     "vitest": "^3.1.4"

@@ -1,9 +1,78 @@
 import * as p from '@clack/prompts';
+import path from 'path';
+import { pathToFileURL } from 'url';
 import { detectInstalledClients } from './detect.js';
 import { configureClaudeCode, configureCodex, configureCopilotCli, readStoredEnv } from './configure.js';
 import { storeCredentials, retrievePassword } from '../keychain.js';
+import { normalizeBaseUrl } from './setup-utils.js';
+import { OpenGrokClient } from '../../client/index.js';
+import { loadConfig } from '../../config.js';
+
+/**
+ * Best-effort project discovery for the setup wizard. Returns sorted project
+ * names or an empty array when the server is unreachable. Never throws.
+ */
+export async function fetchAvailableProjects(
+  baseUrl: string,
+  username: string,
+  password: string,
+  verifySsl: boolean,
+): Promise<string[]> {
+  try {
+    const cfg = loadConfig({
+      OPENGROK_BASE_URL: baseUrl,
+      OPENGROK_USERNAME: username,
+      OPENGROK_PASSWORD: password,
+      OPENGROK_VERIFY_SSL: verifySsl ? 'true' : 'false',
+    });
+    const tmp = new OpenGrokClient(cfg);
+    try {
+      const names = await Promise.race([
+        tmp.listProjects().then((ps) => ps.map((proj) => proj.name)),
+        new Promise<string[]>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+      ]).catch(() => [] as string[]);
+      return [...new Set(names)].sort((a, b) => a.localeCompare(b));
+    } finally {
+      try {
+        await tmp.close();
+      } catch { /* ignore */ }
+    }
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Launch the Ink TUI setup flow (out/server/tui.mjs ESM bundle).
+ * Throws when the bundle is missing or unloadable — the caller falls back
+ * to the @clack/prompts flow below.
+ */
+export async function runSetupTui(): Promise<void> {
+  // Use new Function to create a real dynamic import() that esbuild won't convert to require().
+  // The TUI bundle (tui.mjs) is ESM because ink uses top-level await.
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const importDynamic = new Function('specifier', 'return import(specifier)') as (s: string) => Promise<{ runInkSetup: () => Promise<void> }>;
+  const tuiPath = pathToFileURL(path.join(__dirname, 'tui.mjs')).href;
+  const { runInkSetup } = await importDynamic(tuiPath);
+  await runInkSetup();
+}
 
 export async function runSetup(): Promise<void> {
+  // Prefer the rich TUI on interactive terminals; fall back to the @clack
+  // flow when stdin/stdout is piped or the TUI bundle cannot be loaded
+  // (e.g. running from source without a build).
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    try {
+      await runSetupTui();
+      return;
+    } catch {
+      // Fall through to the @clack flow.
+    }
+  }
+  await runSetupClack();
+}
+
+async function runSetupClack(): Promise<void> {
   p.intro('OpenGrok MCP Server Setup');
 
   // Load previously stored config so prompts can be pre-filled
@@ -20,14 +89,18 @@ export async function runSetup(): Promise<void> {
     initialValue: stored['OPENGROK_BASE_URL'] ?? '',
     validate: (v) => {
       if (!v) return 'Enter a valid URL';
-      try {
-        const parsed = new URL(v);
-        if (!['http:', 'https:'].includes(parsed.protocol)) return 'URL must use http:// or https://';
-        if (parsed.protocol === 'http:') return 'Warning: HTTP sends credentials unencrypted. Use HTTPS for production.';
-      } catch { return 'Enter a valid URL'; }
+      if (!normalizeBaseUrl(v)) return 'Enter a valid URL, e.g. https://opengrok.company.com/source/';
     },
   });
   if (p.isCancel(url)) { p.cancel('Setup cancelled'); process.exit(0); }
+  // Accept schemeless input (https assumed) — validated above, normalized here.
+  const normalizedUrl = normalizeBaseUrl(String(url)) ?? String(url);
+  if (normalizedUrl !== String(url)) {
+    p.log.info(`Using URL: ${normalizedUrl}`);
+  }
+  if (normalizedUrl.startsWith('http://')) {
+    p.log.warn('HTTP sends credentials unencrypted. Use HTTPS for production.');
+  }
 
   const username = await p.text({
     message: 'Username (leave blank for anonymous)',
@@ -72,18 +145,50 @@ export async function runSetup(): Promise<void> {
   });
   if (p.isCancel(codeMode)) { p.cancel('Setup cancelled'); process.exit(0); }
 
-  const defaultProject = await p.text({
-    message: 'Default project (leave blank to search all projects)',
-    defaultValue: stored['OPENGROK_DEFAULT_PROJECT'] ?? '',
-    placeholder: 'my-project',
-  });
-  if (p.isCancel(defaultProject)) { p.cancel('Setup cancelled'); process.exit(0); }
+  const storedProject = stored['OPENGROK_DEFAULT_PROJECT'] ?? '';
+  const availableProjects = await fetchAvailableProjects(
+    normalizedUrl,
+    String(username),
+    password,
+    Boolean(verifySsl),
+  );
+  let defaultProject: string;
+  if (availableProjects.length > 0) {
+    const initialProject =
+      storedProject && (storedProject === '' || availableProjects.includes(storedProject))
+        ? storedProject
+        : '';
+    const picked = await p.select({
+      message: 'Default project (search scope)',
+      options: [
+        { value: '', label: 'All projects (search all)' },
+        ...availableProjects.map((name) => ({ value: name, label: name })),
+      ],
+      initialValue: initialProject,
+    });
+    if (p.isCancel(picked)) { p.cancel('Setup cancelled'); process.exit(0); }
+    defaultProject = String(picked);
+  } else {
+    const dp = await p.text({
+      message: 'Default project (leave blank to search all projects)',
+      defaultValue: storedProject,
+      placeholder: 'my-project',
+    });
+    if (p.isCancel(dp)) { p.cancel('Setup cancelled'); process.exit(0); }
+    defaultProject = String(dp);
+  }
 
   const enableElicitation = await p.confirm({
     message: 'Enable Interactive AI Prompts? The AI can pause to ask questions during investigations (e.g., project selection, file disambiguation). Requires Claude Code v2.1.76+ or a client that supports MCP Elicitation',
-    initialValue: stored['OPENGROK_ENABLE_ELICITATION'] === 'true',
+    initialValue: stored['OPENGROK_ENABLE_ELICITATION'] !== 'false',
   });
   if (p.isCancel(enableElicitation)) { p.cancel('Setup cancelled'); process.exit(0); }
+
+  const enableMemoryTools = await p.confirm({
+    message: 'Enable memory tools? Persistent investigation notes across sessions (adds 3 Code Mode tools; off = api + execute only)',
+    initialValue: stored['OPENGROK_ENABLE_MEMORY_TOOLS'] === 'true',
+  });
+  if (p.isCancel(enableMemoryTools)) { p.cancel('Setup cancelled'); process.exit(0); }
 
   // --- ADVANCED (optional) ---
   const storedProxy = stored['HTTP_PROXY'] ?? stored['HTTPS_PROXY'] ?? '';
@@ -101,15 +206,22 @@ export async function runSetup(): Promise<void> {
   const storedDefaultMaxResults = stored['OPENGROK_DEFAULT_MAX_RESULTS'] ?? '25';
   const storedEnableObservationMasker = stored['OPENGROK_ENABLE_OBSERVATION_MASKER'] === 'true';
   const storedObservationMaskerTurns = stored['OPENGROK_OBSERVATION_MASKER_TURNS'] ?? '10';
+  const storedPasswordFile = stored['OPENGROK_PASSWORD_FILE'] ?? '';
+  const storedMaxResponseBytes = stored['OPENGROK_MAX_RESPONSE_BYTES'] ?? '0';
+  const storedStrictSsrf = stored['OPENGROK_STRICT_SSRF'] === 'true';
+  const storedJwtIssuer = stored['OPENGROK_JWT_ISSUER'] ?? '';
+  const storedGrammarDir = stored['OPENGROK_GRAMMAR_DIR'] ?? '';
 
   const hasStoredAdvanced = storedProxy || storedApiVersion !== 'v1' || storedResponseFormat ||
     storedMemoryBankDir || storedCompileDbPaths || storedEnableFilesApi || storedEnableSampling ||
     storedSamplingModel || storedSamplingMaxTokens !== '256' || storedAuditLogFile ||
     storedRateLimitRpm !== '60' || storedTimeout !== '30' || storedDefaultMaxResults !== '25' ||
-    storedEnableObservationMasker || storedObservationMaskerTurns !== '10';
+    storedEnableObservationMasker || storedObservationMaskerTurns !== '10' ||
+    storedPasswordFile || storedMaxResponseBytes !== '0' || storedStrictSsrf ||
+    storedJwtIssuer || storedGrammarDir;
 
   const wantsAdvanced = await p.confirm({
-    message: 'Configure advanced settings? (proxy, API version, response format, memory bank, audit log, rate limit)',
+    message: 'Configure advanced settings? (proxy, API version, response format, memory bank, audit log, rate limit, security)',
     initialValue: Boolean(hasStoredAdvanced),
   });
   if (p.isCancel(wantsAdvanced)) { p.cancel('Setup cancelled'); process.exit(0); }
@@ -129,6 +241,11 @@ export async function runSetup(): Promise<void> {
   let defaultMaxResults = storedDefaultMaxResults;
   let enableObservationMasker = storedEnableObservationMasker;
   let observationMaskerTurns = storedObservationMaskerTurns;
+  let passwordFile = storedPasswordFile;
+  let maxResponseBytes = storedMaxResponseBytes;
+  let strictSsrf = storedStrictSsrf;
+  let jwtIssuer = storedJwtIssuer;
+  let grammarDir = storedGrammarDir;
 
   if (wantsAdvanced) {
     const proxyVal = await p.text({
@@ -271,24 +388,70 @@ export async function runSetup(): Promise<void> {
     });
     if (p.isCancel(observationMaskerTurnsVal)) { p.cancel('Setup cancelled'); process.exit(0); }
     observationMaskerTurns = String(observationMaskerTurnsVal);
+
+    const passwordFileVal = await p.text({
+      message: 'Password file path (file-mounted secret for containers, blank = OS keychain)',
+      defaultValue: storedPasswordFile,
+      placeholder: '/run/secrets/opengrok-password',
+    });
+    if (p.isCancel(passwordFileVal)) { p.cancel('Setup cancelled'); process.exit(0); }
+    passwordFile = String(passwordFileVal);
+
+    const maxResponseBytesVal = await p.text({
+      message: 'Max response size in bytes (0 = use context budget default)',
+      initialValue: storedMaxResponseBytes,
+      validate: (v) => {
+        const n = parseInt(v ?? '', 10);
+        if (isNaN(n) || n < 0) return 'Enter a non-negative integer (0 = auto)';
+      },
+    });
+    if (p.isCancel(maxResponseBytesVal)) { p.cancel('Setup cancelled'); process.exit(0); }
+    maxResponseBytes = String(maxResponseBytesVal);
+
+    const strictSsrfVal = await p.confirm({
+      message: 'Enable strict SSRF protection? (reject server URLs pointing at private/loopback IPs)',
+      initialValue: storedStrictSsrf,
+    });
+    if (p.isCancel(strictSsrfVal)) { p.cancel('Setup cancelled'); process.exit(0); }
+    strictSsrf = Boolean(strictSsrfVal);
+
+    const jwtIssuerVal = await p.text({
+      message: 'JWT issuer for HTTP transport OAuth (leave blank to accept any issuer)',
+      defaultValue: storedJwtIssuer,
+      placeholder: 'https://idp.example.com/',
+    });
+    if (p.isCancel(jwtIssuerVal)) { p.cancel('Setup cancelled'); process.exit(0); }
+    jwtIssuer = String(jwtIssuerVal);
+
+    const grammarDirVal = await p.text({
+      message: 'Tree-sitter grammar directory (leave blank for bundled grammars)',
+      defaultValue: storedGrammarDir,
+    });
+    if (p.isCancel(grammarDirVal)) { p.cancel('Setup cancelled'); process.exit(0); }
+    grammarDir = String(grammarDirVal);
   }
 
   // --- STORE CREDENTIALS ---
   if (String(username) && password) {
-    storeCredentials(String(url), String(username), password);
-    p.log.success('Credentials stored in OS keychain');
+    const result = storeCredentials(normalizedUrl, String(username), password);
+    if (result?.warning) {
+      p.log.warn(result.warning);
+    } else {
+      p.log.success('Credentials stored in OS keychain');
+    }
   }
 
   // --- CONFIGURE MCP CLIENTS ---
   const clients = detectInstalledClients();
   const mcpConfig = {
-    url: String(url),
+    url: normalizedUrl,
     username: String(username),
     verifySsl: Boolean(verifySsl),
     contextBudget: String(budget),
     codeMode: Boolean(codeMode),
     defaultProject: String(defaultProject),
     enableElicitation: Boolean(enableElicitation),
+    enableMemoryTools: Boolean(enableMemoryTools),
     proxy,
     apiVersion,
     responseFormatOverride,
@@ -304,6 +467,11 @@ export async function runSetup(): Promise<void> {
     defaultMaxResults,
     enableObservationMasker,
     observationMaskerTurns,
+    passwordFile,
+    maxResponseBytes,
+    strictSsrf,
+    jwtIssuer,
+    grammarDir,
   };
 
   const spin = p.spinner();

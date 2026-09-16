@@ -159,7 +159,7 @@
     <!-- Q17: Code Mode memory bank — persist investigation state -->
     <question id="17" difficulty="hard" mode="code">
       <prompt>Using Code Mode: investigate the ConnectionPool class, record your findings in the memory bank (active-task.md and investigation-log.md), then read back the memory status to confirm the files are non-empty.</prompt>
-      <expected_tools>opengrok_api, opengrok_execute, opengrok_memory_status</expected_tools>
+      <expected_tools>opengrok_execute, opengrok_memory_status</expected_tools>
       <verify>opengrok_execute JS uses env.opengrok.getSymbolContext() + env.opengrok.writeMemory() to persist; opengrok_memory_status confirms both files have content; log entry has ## YYYY-MM-DD timestamp</verify>
     </question>
 
@@ -170,7 +170,7 @@
     <!-- Q18: env.opengrok.elicit() — file disambiguation -->
     <question id="18" difficulty="medium" mode="code" requires="OPENGROK_ENABLE_ELICITATION=true">
       <prompt>Using Code Mode: find the correct "AuthService" file to fetch — there are multiple matches across projects. Write sandbox JS that searches for it, and if more than one result is found, asks the user to choose before fetching the file content.</prompt>
-      <expected_tools>opengrok_api, opengrok_execute</expected_tools>
+      <expected_tools>opengrok_execute</expected_tools>
       <verify>
         Sandbox JS calls env.opengrok.findFile("AuthService*");
         If results.length > 1: calls env.opengrok.elicit() with enum of top file paths;
@@ -183,7 +183,7 @@
     <!-- Q19: env.opengrok.sample() + _suggestions — zero-result reformulation -->
     <question id="19" difficulty="medium" mode="code">
       <prompt>Using Code Mode: search for "handelCrash" (intentional typo) — it will return zero results. The sandbox should detect the zero-result case, check for auto-injected _suggestions, and if absent call sample() to get reformulation candidates. Return the suggestions to the user.</prompt>
-      <expected_tools>opengrok_api, opengrok_execute</expected_tools>
+      <expected_tools>opengrok_execute</expected_tools>
       <verify>
         Sandbox JS calls env.opengrok.search("handelCrash");
         totalCount === 0 triggers zero-result branch;

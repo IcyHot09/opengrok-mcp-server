@@ -22,15 +22,15 @@ import type { Config } from '../server/config.js';
 // Mock elicitOrFallback for integration tests
 // ---------------------------------------------------------------------------
 
-vi.mock('../server/elicitation.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/elicitation.js')>();
+vi.mock('../server/protocol/elicitation.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/protocol/elicitation.js')>();
   return {
     ...original,
     elicitOrFallback: vi.fn().mockResolvedValue({ action: 'cancel' }),
   };
 });
 
-import { elicitOrFallback as mockedElicit } from '../server/elicitation.js';
+import { elicitOrFallback as mockedElicit } from '../server/protocol/elicitation.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -117,8 +117,8 @@ describe('elicitOrFallback (unit)', () => {
 
   it('returns SDK result when elicitInput succeeds', async () => {
     const { elicitOrFallback: realElicit } = await vi.importActual<
-      typeof import('../server/elicitation.js')
-    >('../server/elicitation.js');
+      typeof import('../server/protocol/elicitation.js')
+    >('../server/protocol/elicitation.js');
 
     const elicitInput = vi.fn().mockResolvedValue({ action: 'accept', content: { project: 'alpha' } });
     const mockServer = {
@@ -133,8 +133,8 @@ describe('elicitOrFallback (unit)', () => {
 
   it('returns cancel when elicitInput throws (client not capable)', async () => {
     const { elicitOrFallback: realElicit } = await vi.importActual<
-      typeof import('../server/elicitation.js')
-    >('../server/elicitation.js');
+      typeof import('../server/protocol/elicitation.js')
+    >('../server/protocol/elicitation.js');
 
     const elicitInput = vi.fn().mockRejectedValue(new Error('Client does not support elicitation'));
     const mockServer = {
@@ -148,8 +148,8 @@ describe('elicitOrFallback (unit)', () => {
 
   it('passes through decline action', async () => {
     const { elicitOrFallback: realElicit } = await vi.importActual<
-      typeof import('../server/elicitation.js')
-    >('../server/elicitation.js');
+      typeof import('../server/protocol/elicitation.js')
+    >('../server/protocol/elicitation.js');
 
     const elicitInput = vi.fn().mockResolvedValue({ action: 'decline' });
     const mockServer = {
@@ -165,8 +165,8 @@ describe('elicitOrFallback (unit)', () => {
     // the case where the SDK renames or removes the internal server property.
     // If this test fails, the SDK API has changed and elicitation.ts must be updated.
     const { elicitOrFallback: realElicit } = await vi.importActual<
-      typeof import('../server/elicitation.js')
-    >('../server/elicitation.js');
+      typeof import('../server/protocol/elicitation.js')
+    >('../server/protocol/elicitation.js');
 
     // Simulate a future SDK where server.server does not have elicitInput
     const mockServer = { server: {} } as unknown as McpServer;
@@ -263,7 +263,7 @@ describe('opengrok_search_code elicitation integration', () => {
       arguments: { query: 'foo', search_type: 'full', max_results: 5, start_index: 0 },
     });
 
-    expect(ogClient.search).toHaveBeenCalledWith('foo', 'full', undefined, 5, 0, undefined);
+    expect(ogClient.search).toHaveBeenCalledWith('foo', 'full', undefined, 5, 0, undefined, undefined, undefined, undefined, undefined);
     await client.close();
   });
 

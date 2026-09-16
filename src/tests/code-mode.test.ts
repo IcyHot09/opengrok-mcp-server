@@ -8,31 +8,31 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fsp from 'fs/promises';
 import { createServer } from '../server/server.js';
-import { MemoryBank } from '../server/memory-bank.js';
+import { MemoryBank } from '../server/memory/memory-bank.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Config } from '../server/config.js';
-import { createSandboxAPI } from '../server/sandbox.js';
+import { createSandboxAPI } from '../server/sandbox/index.js';
 
 // ---------------------------------------------------------------------------
 // Mock executeInSandbox so Code Mode tests don't need the compiled worker
 // ---------------------------------------------------------------------------
 
-vi.mock('../server/sandbox.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/sandbox.js')>();
+vi.mock('../server/sandbox/sandbox.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/sandbox/index.js')>();
   return {
     ...original,
     executeInSandbox: vi.fn().mockResolvedValue('{"result": "mock sandbox output"}'),
   };
 });
 
-vi.mock('../server/elicitation.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/elicitation.js')>();
+vi.mock('../server/protocol/elicitation.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/protocol/elicitation.js')>();
   return { ...original, elicitOrFallback: vi.fn().mockResolvedValue({ action: 'cancel' }) };
 });
 
-import { executeInSandbox } from '../server/sandbox.js';
-import { elicitOrFallback as mockedElicit } from '../server/elicitation.js';
+import { executeInSandbox } from '../server/sandbox/index.js';
+import { elicitOrFallback as mockedElicit } from '../server/protocol/elicitation.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -63,6 +63,8 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     OPENGROK_DEFAULT_PROJECT: 'release-2.x',
     OPENGROK_CONTEXT_BUDGET: 'minimal',
     OPENGROK_CODE_MODE: true,
+    OPENGROK_ENABLE_MEMORY_TOOLS: false,
+    OPENGROK_ENABLE_ELICITATION: true,
     OPENGROK_MEMORY_BANK_DIR: '',
     OPENGROK_RESPONSE_FORMAT_OVERRIDE: '',
     ...overrides,
@@ -84,9 +86,9 @@ function makeMockClient() {
   };
 }
 
-async function createCodeModeClient(bank: MemoryBank) {
+async function createCodeModeClient(bank: MemoryBank, configOverrides: Partial<Config> = {}) {
   const ogClient = makeMockClient();
-  const config = makeConfig();
+  const config = makeConfig(configOverrides);
   const server = createServer(ogClient as never, config, bank);
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -155,7 +157,7 @@ describe('Code Mode — opengrok_api tool', () => {
   });
 
   it('opengrok_api spec includes method signatures', async () => {
-    const { client } = await createCodeModeClient(bank);
+    const { client } = await createCodeModeClient(bank, { OPENGROK_ENABLE_MEMORY_TOOLS: true });
     const result = await client.callTool({ name: 'opengrok_api', arguments: {} });
     const text = (result.content as { type: string; text: string }[])[0]?.text ?? '';
     expect(text).toContain('batchSearch');
@@ -227,7 +229,7 @@ describe('Code Mode — memory bank tools', () => {
   });
 
   it('opengrok_read_memory returns stub message for uninitialized file', async () => {
-    const { client } = await createCodeModeClient(bank);
+    const { client } = await createCodeModeClient(bank, { OPENGROK_ENABLE_MEMORY_TOOLS: true });
     const result = await client.callTool({ name: 'opengrok_read_memory', arguments: { filename: 'active-task.md' } });
     const text = (result.content as { type: string; text: string }[])[0]?.text ?? '';
     expect(text).toContain('not yet populated');
@@ -236,7 +238,7 @@ describe('Code Mode — memory bank tools', () => {
 
   it('opengrok_read_memory returns content for populated file', async () => {
     await bank.write('active-task.md', 'Investigating EventLoop crash');
-    const { client } = await createCodeModeClient(bank);
+    const { client } = await createCodeModeClient(bank, { OPENGROK_ENABLE_MEMORY_TOOLS: true });
     const result = await client.callTool({ name: 'opengrok_read_memory', arguments: { filename: 'active-task.md' } });
     const text = (result.content as { type: string; text: string }[])[0]?.text ?? '';
     expect(text).toContain('EventLoop crash');
@@ -244,7 +246,7 @@ describe('Code Mode — memory bank tools', () => {
   });
 
   it('opengrok_update_memory writes content to bank', async () => {
-    const { client } = await createCodeModeClient(bank);
+    const { client } = await createCodeModeClient(bank, { OPENGROK_ENABLE_MEMORY_TOOLS: true });
     await client.callTool({ name: 'opengrok_update_memory', arguments: { filename: 'active-task.md', content: 'New context', mode: 'overwrite' } });
     const content = await bank.read('active-task.md');
     expect(content).toContain('New context');
@@ -253,7 +255,7 @@ describe('Code Mode — memory bank tools', () => {
 
   it('opengrok_update_memory in append mode appends content', async () => {
     await bank.write('investigation-log.md', '## 2025-01-01: First entry\nInitial finding.');
-    const { client } = await createCodeModeClient(bank);
+    const { client } = await createCodeModeClient(bank, { OPENGROK_ENABLE_MEMORY_TOOLS: true });
     await client.callTool({ name: 'opengrok_update_memory', arguments: { filename: 'investigation-log.md', content: '## 2025-01-02: Second\nNew finding.', mode: 'append' } });
     const content = await bank.read('investigation-log.md');
     expect(content).toContain('First entry');
@@ -342,47 +344,175 @@ describe('Standard Mode — memory tools are Code Mode only (Task 8)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Memory tools toggle (OPENGROK_ENABLE_MEMORY_TOOLS)
+// ---------------------------------------------------------------------------
+
+describe('Code Mode — memory tools toggle', () => {
+  let tmpDir: string;
+  let bank: MemoryBank;
+
+  beforeEach(async () => {
+    tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'opengrok-mem-toggle-test-'));
+    bank = new MemoryBank(tmpDir);
+    await bank.ensureDir();
+  });
+
+  afterEach(async () => {
+    await fsp.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function listToolNames(configOverrides: Partial<Config> = {}): Promise<string[]> {
+    const ogClient = makeMockClient();
+    const config = makeConfig(configOverrides);
+    const server = createServer(ogClient as never, config, bank);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client', version: '1.0' });
+    await client.connect(clientTransport);
+
+    const tools = await client.listTools();
+    const names = tools.tools.map((t) => t.name).sort();
+    await client.close();
+    return names;
+  }
+
+  it('registers 2 tools by default (api + execute only)', async () => {
+    expect(await listToolNames()).toEqual([
+      'opengrok_api',
+      'opengrok_execute',
+    ]);
+  });
+
+  it('registers 5 tools when OPENGROK_ENABLE_MEMORY_TOOLS=true', async () => {
+    expect(await listToolNames({ OPENGROK_ENABLE_MEMORY_TOOLS: true })).toEqual([
+      'opengrok_api',
+      'opengrok_execute',
+      'opengrok_memory_status',
+      'opengrok_read_memory',
+      'opengrok_update_memory',
+    ]);
+  });
+
+  it('omits memory resources when disabled', async () => {
+    const ogClient = makeMockClient();
+    const config = makeConfig({ OPENGROK_ENABLE_MEMORY_TOOLS: false });
+    const server = createServer(ogClient as never, config, bank);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client', version: '1.0' });
+    await client.connect(clientTransport);
+
+    const { resources } = await client.listResources();
+    const uris = resources.map((r) => r.uri);
+    expect(uris).not.toContain('opengrok-memory://active-task.md');
+    expect(uris).not.toContain('opengrok-memory://investigation-log.md');
+    await client.close();
+  });
+
+  it('opengrok_api omits memory methods when disabled', async () => {
+    const ogClient = makeMockClient();
+    const config = makeConfig({ OPENGROK_ENABLE_MEMORY_TOOLS: false });
+    const server = createServer(ogClient as never, config, bank);
+
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+
+    const client = new Client({ name: 'test-client', version: '1.0' });
+    await client.connect(clientTransport);
+
+    const result = await client.callTool({ name: 'opengrok_api', arguments: {} });
+    const text = (result.content as { type: string; text: string }[])[0]?.text ?? '';
+    expect(text).not.toContain('readMemory');
+    expect(text).not.toContain('writeMemory');
+    expect(text).toContain('search(');
+    await client.close();
+  });
+
+  it('filterApiSpec strips [MEMORY] lines only when disabled', async () => {
+    const { filterApiSpec, API_SPEC } = await import('../server/sandbox/index.js');
+    expect(API_SPEC).toContain('readMemory');
+    const filtered = filterApiSpec(API_SPEC, { memoryTools: false });
+    expect(filtered).not.toContain('readMemory');
+    expect(filtered).not.toContain('writeMemory');
+    expect(filtered).toContain('search(');
+    expect(filterApiSpec(API_SPEC, { memoryTools: true })).toBe(API_SPEC);
+  });
+
+  it('sandbox readMemory/writeMemory throw when memoryEnabled:false', async () => {
+    const { createSandboxAPI } = await import('../server/sandbox/index.js');
+    const ogClient = makeMockClient();
+    const api = createSandboxAPI(ogClient as never, bank, { memoryEnabled: false });
+    await expect(api.readMemory('active-task.md')).rejects.toThrow(/disabled/);
+    await expect(api.writeMemory('active-task.md', 'x')).rejects.toThrow(/disabled/);
+  });
+
+  it('sandbox readMemory works when memory tools are enabled', async () => {
+    const { createSandboxAPI } = await import('../server/sandbox/index.js');
+    const ogClient = makeMockClient();
+    const api = createSandboxAPI(ogClient as never, bank);
+    await api.readMemory('active-task.md'); // must not throw
+  });
+});
+
+// ---------------------------------------------------------------------------
 // API_SPEC structure tests
 // ---------------------------------------------------------------------------
-import { API_SPEC } from '../server/sandbox.js';
+import { API_SPEC, METHOD_SIGNATURES } from '../server/sandbox/index.js';
 
-describe('API_SPEC — return_rules and memory filenames', () => {
-  it('API_SPEC has return_rules array', () => {
-    expect(API_SPEC).toHaveProperty('return_rules');
-    expect(Array.isArray(API_SPEC.return_rules)).toBe(true);
-    expect(API_SPEC.return_rules.length).toBeGreaterThanOrEqual(3);
+describe('API_SPEC — generated declaration string', () => {
+  const ALL_METHODS = [
+    'search', 'batchSearch', 'getFileContent', 'getSymbolContext',
+    'getFileSymbols', 'getFileHistory', 'getFileAnnotate', 'browseDir',
+    'findFile', 'getFileOverview', 'traceCallChain', 'searchSuggest',
+    'getCompileInfo', 'indexHealth', 'readMemory', 'writeMemory',
+    'getFileDiff', 'elicit', 'sample',
+  ];
+
+  it('API_SPEC is a TypeScript declaration string for env.opengrok.*', () => {
+    expect(typeof API_SPEC).toBe('string');
+    expect(API_SPEC).toContain('env.opengrok');
   });
 
-  it('return_rules[0] advises against returning raw objects', () => {
-    const rule = API_SPEC.return_rules[0];
-    expect(typeof rule).toBe('string');
-    expect(rule.toLowerCase()).toMatch(/raw|map|string/);
+  it('API_SPEC documents all 19 sandbox methods', () => {
+    for (const name of ALL_METHODS) {
+      expect(API_SPEC, `missing method ${name}`).toContain(`${name}(`);
+    }
   });
 
-  it('return_rules[1] advises setting maxResults conservatively', () => {
-    const rule = API_SPEC.return_rules[1];
-    expect(typeof rule).toBe('string');
-    expect(rule.toLowerCase()).toContain('maxresults');
+  it('METHOD_SIGNATURES covers all 19 sandbox methods', () => {
+    for (const name of ALL_METHODS) {
+      expect(METHOD_SIGNATURES[name], `missing signature ${name}`).toContain(`${name}(`);
+    }
   });
 
-  it('return_rules[2] advises returning early when results are empty', () => {
-    const rule = API_SPEC.return_rules[2];
-    expect(typeof rule).toBe('string');
-    expect(rule.toLowerCase()).toMatch(/early|empty/);
+  it('API_SPEC documents cursor pagination and expandFunction opts', () => {
+    expect(API_SPEC).toContain('cursor?: string');
+    expect(API_SPEC).toContain('expandFunction?: boolean');
   });
 
-  it('readMemory allowed filenames are the 2-file architecture names', () => {
-    const allowed = API_SPEC.methods.readMemory.allowed;
-    expect(allowed).toContain('active-task.md');
-    expect(allowed).toContain('investigation-log.md');
-    expect(allowed).not.toContain('AGENTS.md');
-    expect(allowed).not.toContain('active-context.md');
+  it('readMemory filenames are the 2-file architecture names', () => {
+    expect(API_SPEC).toContain('active-task.md');
+    expect(API_SPEC).toContain('investigation-log.md');
   });
 
-  it('opengrok_api tool response includes return_rules in spec text', async () => {
-    const yaml = await import('js-yaml');
-    const specText = yaml.dump(API_SPEC, { lineWidth: 120, noRefs: true });
-    expect(specText).toContain('return_rules');
+  it('opengrok_api tool response serves the declaration string directly', async () => {
+    const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'opengrok-cm-spec-'));
+    const specBank = new MemoryBank(tmpDir);
+    await specBank.ensureDir();
+    const { client } = await createCodeModeClient(specBank);
+    try {
+      const result = await client.callTool({ name: 'opengrok_api', arguments: {} });
+      const text = (result.content as { type: string; text: string }[])[0]?.text ?? '';
+      expect(text).toContain('getFileContent(');
+      expect(text).toContain('traceCallChain(');
+    } finally {
+      await client.close();
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

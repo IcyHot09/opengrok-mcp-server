@@ -3,6 +3,14 @@
  * Each test targets specific uncovered branch paths identified via coverage analysis.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Production client code calls fetch from 'undici' (same package as its
+// Agent dispatcher); mock it there and keep real Agent/ProxyAgent.
+const fetchMock = vi.hoisted(() => vi.fn());
+vi.mock('undici', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return { ...actual, fetch: (...args: unknown[]) => fetchMock(...args) };
+});
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
@@ -14,13 +22,13 @@ import {
   parseFileHistory,
   parseWebSearchResults,
   parseFileSymbols,
-} from '../server/parsers.js';
+} from '../server/parsers/index.js';
 import {
   formatFileHistory,
   formatAnnotate,
   formatFileSymbols,
   formatDirectoryListing,
-} from '../server/formatters.js';
+} from '../server/formatters/index.js';
 import {
   _dispatchTool as dispatchTool,
   createServer,
@@ -523,7 +531,7 @@ describe('client.ts targeted branches', () => {
   // Let's test getFileSymbols cache hit:
 
   it('OpenGrokClient getFileSymbols cache hit returns cached result', async () => {
-    const { OpenGrokClient } = await import('../server/client.js');
+    const { OpenGrokClient } = await import('../server/client/index.js');
     const client = new OpenGrokClient(makeConfig({
       OPENGROK_CACHE_ENABLED: true,
     }));
@@ -536,9 +544,9 @@ describe('client.ts targeted branches', () => {
       status: 200,
     };
 
-    // First call should fetch
-    const origFetch = globalThis.fetch;
-    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
+    // Mock undici fetch (what the client actually calls)
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValue(mockResponse);
 
     try {
       const result1 = await client.getFileSymbols('proj', 'file.cpp');
@@ -548,9 +556,9 @@ describe('client.ts targeted branches', () => {
       const result2 = await client.getFileSymbols('proj', 'file.cpp');
       expect(result2.symbols.length).toBe(1);
       // fetch should have been called only once
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     } finally {
-      globalThis.fetch = origFetch;
+      fetchMock.mockReset();
     }
   });
 });

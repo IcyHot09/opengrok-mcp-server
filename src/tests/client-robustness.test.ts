@@ -3,10 +3,19 @@
  * and concurrent cache operations (Phase 7.4).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Production code calls fetch from 'undici' (same package as the Agent
+// dispatcher — the global fetch rejects cross-version dispatchers).
+// Mock it here; keep real Agent/ProxyAgent via importOriginal.
+const fetchMock = vi.hoisted(() => vi.fn());
+vi.mock('undici', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return { ...actual, fetch: (...args: unknown[]) => fetchMock(...args) };
+});
 import {
   OpenGrokClient,
   _TTLCache as TTLCache,
-} from '../server/client.js';
+} from '../server/client/index.js';
 import type { Config } from '../server/config.js';
 
 // -----------------------------------------------------------------------
@@ -52,10 +61,11 @@ function mockResponse(status: number, body: string, headers: Record<string, stri
   } as unknown as Response;
 }
 
-let fetchSpy: ReturnType<typeof vi.spyOn>;
+let fetchSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  fetchSpy = vi.spyOn(globalThis, 'fetch');
+  fetchMock.mockReset();
+  fetchSpy = fetchMock;
 });
 
 afterEach(() => {

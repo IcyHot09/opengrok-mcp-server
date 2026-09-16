@@ -6,666 +6,961 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline' 'nonce-WEBVIEW_NONCE'; script-src 'nonce-WEBVIEW_NONCE'; img-src data:;">
     <title>OpenGrok Configuration</title>
     <style nonce="WEBVIEW_NONCE">
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
-        body {
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            color: var(--vscode-foreground);
-            background: transparent;
-            padding: 0 20px 24px;
-            margin: 0;
-            overflow-y: auto;
-            overflow-x: hidden;
-            line-height: 1.5;
-        }
+body {
+    color: var(--vscode-foreground);
+    background: var(--vscode-editor-background);
+    font-family: var(--vscode-font-family);
+    font-size: var(--vscode-font-size);
+    line-height: 1.45;
+    overflow: hidden;
+}
 
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+button, input, select { font: inherit; }
+button { color: inherit; }
 
-        /* ── Header ── */
-        .header {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            padding: 16px 0;
-            border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.15));
-            margin-bottom: 6px;
-        }
-        .header-icon {
-            width: 32px; height: 32px;
-            border-radius: 8px;
-            background: linear-gradient(135deg, var(--vscode-button-background), var(--vscode-button-hoverBackground, var(--vscode-button-background)));
-            display: flex; align-items: center; justify-content: center;
-            color: var(--vscode-button-foreground);
-            flex-shrink: 0;
-        }
-        .header-text { flex: 1; min-width: 0; }
-        .header-title { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
-        .header-subtitle { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 1px; }
+/* ─── Layout ─── */
+.app {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    height: 100vh;
+    min-height: 520px;
+}
 
-        /* ── Status pill ── */
-        .status-pill {
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 3px 10px; border-radius: 99px;
-            font-size: 11px; font-weight: 500;
-            background: var(--vscode-badge-background);
-            color: var(--vscode-badge-foreground);
-            transition: all 0.25s ease;
-            white-space: nowrap;
-        }
-        .status-dot {
-            width: 6px; height: 6px; border-radius: 50%;
-            background: currentColor; opacity: 0.5; flex-shrink: 0;
-        }
-        .status-pill.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-        .status-pill.active .status-dot { opacity: 1; }
-        .status-pill.connected .status-dot { opacity: 1; animation: pulse 2s ease-in-out infinite; }
-        .status-pill.error { background: var(--vscode-inputValidation-errorBackground, rgba(255,0,0,0.15)); color: var(--vscode-errorForeground); }
-        .status-pill.error .status-dot { opacity: 1; }
+/* ─── Sidebar ─── */
+.sidebar {
+    border-right: 1px solid rgba(128,128,128,0.12);
+    background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+    padding: 28px 12px 20px 20px;
+    overflow-y: auto;
+}
 
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.brand {
+    margin-bottom: 26px; padding-left: 2px;
+}
 
-        /* ── Section ── */
-        .section-label {
-            color: var(--vscode-descriptionForeground);
-            font-size: 11px; font-weight: 600;
-            letter-spacing: 0.06em; text-transform: uppercase;
-            margin: 24px 0 10px; display: block;
-        }
+.brand-title {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.7;
+}
 
-        /* ── Card group ── */
-        .card {
-            background: var(--vscode-editor-background);
-            border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.12));
-            border-radius: 6px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
-        }
+.nav { display: flex; flex-direction: column; gap: 2px; }
 
-        /* ── Form fields ── */
-        .field { margin-bottom: 14px; }
-        .field:last-child { margin-bottom: 0; }
-        .field label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 500; }
+.nav-button {
+    width: 100%; min-height: 30px; border: 0; border-radius: 7px;
+    background: transparent;
+    color: var(--vscode-foreground);
+    display: flex; align-items: center; gap: 9px;
+    padding: 6px 10px; cursor: pointer; text-align: left;
+    font-size: 13px; font-weight: 400;
+    transition: background 0.1s ease;
+}
 
-        input[type="text"], input[type="url"], input[type="password"], select {
-            background: var(--vscode-input-background);
-            color: var(--vscode-input-foreground);
-            border: 1px solid var(--vscode-input-border, rgba(128,128,128,0.2));
-            font-family: var(--vscode-font-family);
-            font-size: var(--vscode-font-size);
-            padding: 6px 10px;
-            width: 100%;
-            border-radius: 4px;
-            transition: border-color 0.15s;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: var(--vscode-focusBorder);
-            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-        }
-        input::placeholder { color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground)); }
-        select { cursor: pointer; }
+.nav-button:hover { background: rgba(128,128,128,0.08); }
+.nav-button.active {
+    background: rgba(128,128,128,0.12);
+    font-weight: 500;
+}
 
-        .hint { color: var(--vscode-descriptionForeground); font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+.nav-icon {
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: currentColor; opacity: 0.45; flex: 0 0 auto;
+}
+.nav-button.active .nav-icon { opacity: 0.8; }
 
-        /* ── Checkbox ── */
-        .checkbox-field { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
-        .checkbox-field:last-child { margin-bottom: 0; }
-        .checkbox-field input[type="checkbox"] {
-            margin-top: 3px; flex-shrink: 0;
-            accent-color: var(--vscode-button-background);
-            width: 14px; height: 14px;
-        }
-        .checkbox-content { flex: 1; }
-        .checkbox-content label { font-size: 12px; cursor: pointer; display: block; font-weight: 500; }
-        .checkbox-subtext { font-size: 11px; color: var(--vscode-descriptionForeground); margin-top: 2px; line-height: 1.4; }
+/* ─── Content ─── */
+.content { overflow-y: auto; padding: 72px 48px 96px; }
+.content-inner { max-width: 720px; }
 
-        /* ── Tag / badge ── */
-        .tag {
-            display: inline-block;
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            font-size: 10px; font-weight: 600;
-            padding: 1px 6px; border-radius: 3px;
-            vertical-align: middle; margin-left: 6px;
-            letter-spacing: 0.02em;
-        }
+.settings-section { display: none; opacity: 0; transition: opacity 0.15s ease; }
+.settings-section.active { display: block; opacity: 1; }
 
-        /* ── Divider ── */
-        .divider { border: none; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.12)); margin: 20px 0; }
+.section-header { margin-bottom: 24px; }
+.section-title { font-size: 20px; font-weight: 600; }
 
-        /* ── Buttons ── */
-        .actions { display: flex; gap: 8px; margin-top: 20px; }
+.subsection-title {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.7;
+    padding: 14px 20px 6px;
+}
 
-        button {
-            border: none; cursor: pointer;
-            padding: 7px 16px;
-            font-family: var(--vscode-font-family);
-            font-size: 12px; font-weight: 500;
-            border-radius: 4px;
-            display: inline-flex; align-items: center; gap: 6px;
-            transition: opacity 0.15s, background 0.15s;
-        }
-        button:disabled { opacity: 0.4; cursor: not-allowed; }
+.subsection-title:first-child { padding-top: 16px; }
 
-        .btn-primary {
-            background: var(--vscode-button-background);
-            color: var(--vscode-button-foreground);
-            flex: 1; justify-content: center;
-        }
-        .btn-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+/* ─── Settings Card ─── */
+.settings-group {
+    border: 1px solid rgba(128,128,128,0.10);
+    border-radius: 12px;
+    background: rgba(128,128,128,0.035);
+    margin-bottom: 20px;
+}
 
-        .btn-secondary {
-            background: var(--vscode-button-secondaryBackground);
-            color: var(--vscode-button-secondaryForeground);
-        }
-        .btn-secondary:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-secondaryBackground)); }
+/* ─── Setting Row ─── */
+.setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; padding: 20px 20px;
+    border-top: 1px solid rgba(128,128,128,0.08);
+}
 
-        /* ── Status bar ── */
-        #statusBar { font-size: 11px; margin-top: 10px; min-height: 16px; transition: color 0.2s; }
-        #statusBar.success { color: var(--vscode-testing-iconPassed, #4ec9b0); }
-        #statusBar.error { color: var(--vscode-errorForeground); }
-        #statusBar.info { color: var(--vscode-descriptionForeground); }
+.setting-row:first-child { border-top: 0; }
+.setting-row.tall { align-items: flex-start; }
 
-        /* ── Collapsible ── */
-        details > summary {
-            cursor: pointer;
-            color: var(--vscode-textLink-foreground);
-            font-size: 12px; font-weight: 500;
-            user-select: none;
-            padding: 6px 0;
-            display: flex; align-items: center; gap: 6px;
-            list-style: none;
-        }
-        details > summary::-webkit-details-marker { display: none; }
-        details > summary:hover { text-decoration: underline; }
-        details > summary .chevron { transition: transform 0.2s ease; flex-shrink: 0; }
-        details[open] > summary .chevron { transform: rotate(90deg); }
-        details > div { padding-top: 12px; }
+.setting-info { flex: 1 1 auto; min-width: 120px; }
+.setting-control { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; max-width: 55%; }
 
-        /* ── Toast ── */
-        .toast-container {
-            position: fixed; bottom: 16px; left: 12px; right: 12px;
-            display: flex; flex-direction: column; gap: 6px;
-            z-index: 100; pointer-events: none;
-        }
-        .toast {
-            background: var(--vscode-notifications-background, var(--vscode-editor-background));
-            border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.15));
-            border-radius: 6px;
-            padding: 10px 14px;
-            font-size: 12px; line-height: 1.4;
-            color: var(--vscode-foreground);
-            transform: translateY(20px); opacity: 0;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-            pointer-events: auto;
-        }
-        .toast.show { transform: translateY(0); opacity: 1; }
-        .toast.error { border-left: 3px solid var(--vscode-errorForeground); }
-        .toast.success { border-left: 3px solid var(--vscode-testing-iconPassed, #4ec9b0); }
-        .toast.info { border-left: 3px solid var(--vscode-button-background); }
+.setting-label { display: block; font-weight: 500; font-size: 13.5px; margin-bottom: 3px; }
+.setting-description {
+    color: var(--vscode-descriptionForeground); font-size: 12px;
+    opacity: 0.75; line-height: 1.35;
+}
+.field-hint { color: var(--vscode-descriptionForeground); font-size: 11px; margin-top: 5px; opacity: 0.6; }
+.field-hint.caution { color: var(--vscode-editorWarning-foreground, #cca700); opacity: 0.85; }
+.field-hint.success { color: var(--vscode-testing-iconPassed, #4ec9b0); opacity: 0.85; }
+.field-hint.error { color: var(--vscode-errorForeground); opacity: 0.85; }
 
-        /* ── Loading skeleton ── */
-        .skeleton { opacity: 0; animation: fadeIn 0.3s ease forwards; }
-        .skeleton.loaded { opacity: 1; }
-        @keyframes fadeIn { to { opacity: 1; } }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-        .spin { animation: spin 0.8s linear infinite; }
+.control-stack { display: flex; flex-direction: column; gap: 8px; min-width: 0; align-items: flex-end; }
 
-        /* ── Note banner ── */
-        .note {
-            font-size: 11px; color: var(--vscode-descriptionForeground);
-            margin-top: 6px; padding: 6px 10px;
-            background: var(--vscode-textBlockQuote-background, rgba(128,128,128,0.06));
-            border-radius: 4px; line-height: 1.5;
-        }
+/* ─── Text/URL/Number Inputs ─── */
+input[type="text"], input[type="url"], input[type="password"], input[type="number"], select {
+    width: 260px; min-height: 34px;
+    border: 1px solid rgba(128,128,128,0.18);
+    border-radius: 8px; padding: 6px 12px;
+    color: var(--vscode-input-foreground);
+    background: var(--vscode-input-background);
+    font-size: 13px;
+}
+
+input:focus, select:focus, button:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px;
+}
+
+input::placeholder {
+    color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+    opacity: 0.5;
+}
+
+/* ─── Custom Select (Project Picker) ─── */
+.custom-select { position: relative; width: 260px; }
+.custom-select-trigger {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; min-height: 34px; padding: 6px 12px;
+    border: 1px solid rgba(128,128,128,0.18); border-radius: 8px;
+    background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+    font-size: 13px; cursor: pointer; text-align: left;
+    transition: border-color 0.15s ease;
+}
+.custom-select-trigger:hover { border-color: rgba(128,128,128,0.35); }
+.custom-select.open .custom-select-trigger { border-color: var(--vscode-focusBorder); }
+.custom-select-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.custom-select-options {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 100;
+    max-height: 200px; overflow-y: auto; padding: 4px 0;
+    background: var(--vscode-dropdown-background, var(--vscode-input-background));
+    border: 1px solid rgba(128,128,128,0.25); border-radius: 8px;
+    list-style: none; box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+.custom-select.open .custom-select-options { display: block; }
+.custom-select-options li {
+    padding: 7px 12px; cursor: pointer; font-size: 13px;
+    color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+    border-radius: 4px; margin: 0 4px;
+    transition: background 0.1s ease;
+}
+.custom-select-options li:hover, .custom-select-options li.highlighted {
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.12));
+}
+.custom-select-options li.selected {
+    background: var(--vscode-list-activeSelectionBackground, rgba(0,120,212,0.25));
+    color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+    font-weight: 500;
+}
+
+/* ─── iOS-style Toggle Switch ─── */
+.toggle-switch {
+    position: relative; display: inline-block;
+    width: 44px; height: 24px; flex: 0 0 auto;
+}
+
+.toggle-switch input {
+    position: absolute; opacity: 0; width: 0; height: 0;
+}
+
+.toggle-track {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: 12px; cursor: pointer;
+    background: rgba(128,128,128,0.25);
+    transition: background 0.2s ease;
+}
+
+.toggle-track::before {
+    content: '';
+    position: absolute; top: 3px; left: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--vscode-foreground);
+    opacity: 0.85;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.toggle-switch input:checked + .toggle-track {
+    background: var(--vscode-button-background);
+}
+
+.toggle-switch input:checked + .toggle-track::before {
+    transform: translateX(20px);
+    background: var(--vscode-button-foreground);
+    opacity: 1;
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+    outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px;
+}
+
+.toggle-switch input:disabled + .toggle-track {
+    opacity: 0.4; cursor: not-allowed;
+}
+
+/* ─── Segmented Pill (multi-choice only) ─── */
+.pill-toggle {
+    display: inline-flex; border-radius: 8px; overflow: hidden;
+    background: rgba(128,128,128,0.10);
+    height: 32px;
+}
+
+.pill-toggle input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+
+.pill-option {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0 16px; cursor: pointer; font-size: 13px; font-weight: 400;
+    color: var(--vscode-descriptionForeground);
+    border-radius: 7px; margin: 2px;
+    transition: background 0.15s ease, color 0.15s ease;
+    user-select: none; white-space: nowrap;
+}
+
+.pill-toggle input[type="radio"]:checked + .pill-option {
+    background: rgba(128,128,128,0.20);
+    color: var(--vscode-foreground);
+    font-weight: 500;
+}
+
+.pill-toggle input[type="radio"]:focus-visible + .pill-option {
+    outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px;
+}
+
+/* ─── Custom Dropdown ─── */
+select {
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+}
+
+/* ─── Badge ─── */
+.badge {
+    display: inline-flex; align-items: center; height: 18px;
+    border-radius: 4px; padding: 0 6px; margin-left: 6px;
+    font-size: 10px; font-weight: 600;
+    color: var(--vscode-badge-foreground);
+    background: var(--vscode-badge-background);
+    vertical-align: 1px;
+}
+
+/* ─── Warning ─── */
+.warning {
+    display: none;
+    border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(245, 158, 11, 0.7));
+    background: var(--vscode-inputValidation-warningBackground, rgba(245, 158, 11, 0.1));
+    color: var(--vscode-inputValidation-warningForeground, var(--vscode-foreground));
+    border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.4;
+}
+.warning.visible { display: block; }
+
+/* ─── Bottom Action Bar ─── */
+.actions-bar {
+    position: fixed; right: 0; bottom: 0; left: 180px;
+    display: flex; justify-content: space-between; gap: 16px; align-items: center;
+    padding: 14px 48px;
+    border-top: 1px solid rgba(128,128,128,0.10);
+    background: var(--vscode-editor-background); z-index: 20;
+}
+
+.status-wrap { min-width: 0; }
+
+#statusBar {
+    min-height: 16px; font-size: 12px;
+    color: var(--vscode-descriptionForeground); opacity: 0.7;
+}
+#statusBar.success { color: var(--vscode-testing-iconPassed, #4ec9b0); opacity: 1; }
+#statusBar.error { color: var(--vscode-errorForeground); opacity: 1; }
+#statusBar.info { color: var(--vscode-descriptionForeground); opacity: 0.7; }
+
+.button-group { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+.btn-primary, .btn-secondary {
+    border: 0; border-radius: 8px; min-height: 32px; padding: 6px 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px; cursor: pointer; white-space: nowrap; font-size: 13px;
+}
+
+.btn-primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.btn-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+.btn-secondary { background: rgba(128,128,128,0.12); color: var(--vscode-foreground); }
+.btn-secondary:hover:not(:disabled) { background: rgba(128,128,128,0.18); }
+
+button:disabled, input:disabled, select:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── Toast Notifications ─── */
+.toast-container {
+    position: fixed; right: 24px; bottom: 78px;
+    display: flex; flex-direction: column; gap: 8px;
+    max-width: 380px; z-index: 30; pointer-events: none;
+}
+
+.toast {
+    transform: translateY(8px); opacity: 0;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    border: 1px solid rgba(128,128,128,0.12);
+    border-left-width: 3px; border-radius: 10px; padding: 10px 14px;
+    color: var(--vscode-foreground);
+    background: var(--vscode-notifications-background, var(--vscode-editor-background));
+    box-shadow: 0 4px 24px rgba(0,0,0,0.2); pointer-events: auto;
+    font-size: 12.5px;
+}
+
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.error { border-left-color: var(--vscode-errorForeground); }
+.toast.success { border-left-color: var(--vscode-testing-iconPassed, #4ec9b0); }
+.toast.info { border-left-color: var(--vscode-button-background); }
+
+/* ─── Responsive ─── */
+@media (max-width: 780px) {
+    body { overflow: auto; }
+    .app { display: block; height: auto; min-height: 100vh; }
+    .sidebar { position: sticky; top: 0; z-index: 10; border-right: 0; border-bottom: 1px solid rgba(128,128,128,0.10); padding: 14px 16px; }
+    .brand { margin-bottom: 10px; }
+    .nav { flex-direction: row; overflow-x: auto; padding-bottom: 2px; }
+    .nav-button { width: auto; flex: 0 0 auto; }
+    .content { overflow: visible; padding: 28px 16px 112px; }
+    .setting-row { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .setting-control { align-self: flex-start; }
+    input[type="text"], input[type="url"], input[type="password"], input[type="number"], select { width: 100%; }
+    .actions-bar { left: 0; padding: 12px 16px; align-items: flex-start; flex-direction: column; }
+}
     </style>
 </head>
 <body>
-    <!-- Header -->
-    <div class="header">
-        <div class="header-icon">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-            </svg>
+<div class="app">
+    <aside class="sidebar">
+        <div class="brand">
+            <div class="brand-title">OpenGrok</div>
         </div>
-        <div class="header-text">
-            <div class="header-title">OpenGrok MCP</div>
-            <div class="header-subtitle">Server Configuration</div>
-        </div>
-        <div class="status-pill" id="statusPill">
-            <div class="status-dot"></div>
-            <span id="statusText">Not Configured</span>
-        </div>
-    </div>
+        <nav class="nav" aria-label="Settings sections">
+            <button type="button" class="nav-button active" data-section="general"><span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span><span>General</span></button>
+            <button type="button" class="nav-button" data-section="features"><span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span>Features</span></button>
+            <button type="button" class="nav-button" data-section="network"><span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span><span>Network</span></button>
+            <button type="button" class="nav-button" data-section="advanced"><span class="nav-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span><span>Advanced</span></button>
+        </nav>
+    </aside>
 
-    <div class="skeleton" id="configBody">
+    <main class="content">
+        <div class="content-inner" id="configBody">
 
-    <!-- CONNECTION -->
-    <span class="section-label">Connection</span>
-    <div class="card">
-        <div class="field">
-            <label for="baseUrl">Server URL</label>
-            <input type="url" id="baseUrl" placeholder="https://opengrok.example.com/source/">
-        </div>
-        <div class="field">
-            <label for="username">Username</label>
-            <input type="text" id="username" placeholder="e.g. jdoe" autocomplete="username">
-        </div>
-        <div class="field">
-            <label for="password">Password</label>
-            <input type="password" id="password" placeholder="Enter new password" autocomplete="current-password">
-            <div class="hint" id="passwordHint">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                Stored securely in the OS keychain
-            </div>
-        </div>
-        <div class="checkbox-field">
-            <input type="checkbox" id="verifySsl">
-            <div class="checkbox-content">
-                <label for="verifySsl">Verify SSL/TLS Certificates</label>
-                <div class="checkbox-subtext">Disable only for self-signed or internal CA certificates</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- BEHAVIOR -->
-    <span class="section-label">Behavior</span>
-    <div class="card">
-        <div class="checkbox-field">
-            <input type="checkbox" id="codeMode" checked>
-            <div class="checkbox-content">
-                <label for="codeMode">Code Mode <span class="tag">Recommended</span></label>
-                <div class="checkbox-subtext">Uses a sandboxed JavaScript runtime for multi-step code investigations. Reduces AI token usage by ~90%.</div>
-            </div>
-        </div>
-        <div class="field">
-            <label for="defaultProject">Default Project</label>
-            <input type="text" id="defaultProject" placeholder="e.g. myproject">
-            <div class="hint">Scope all searches to this project unless overridden. Leave blank to search all.</div>
-        </div>
-        <div class="field">
-            <label for="contextBudget">Response Detail</label>
-            <select id="contextBudget">
-                <option value="minimal">Compact (4 KB) &mdash; fewer tokens, lower detail</option>
-                <option value="standard">Standard (8 KB) &mdash; balanced, recommended</option>
-                <option value="generous">Detailed (16 KB) &mdash; more context, more tokens</option>
-            </select>
-        </div>
-        <div class="checkbox-field">
-            <input type="checkbox" id="enableElicitation">
-            <div class="checkbox-content">
-                <label for="enableElicitation">Interactive AI Prompts</label>
-                <div class="checkbox-subtext">The AI can pause to ask you questions during investigations — e.g., choosing a project, disambiguating files. Requires Claude Code v2.1.76+ or a client that supports MCP Elicitation.</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- ADVANCED -->
-    <details id="advancedSection">
-        <summary>
-            <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            Advanced Settings
-        </summary>
-        <div>
-            <div class="card">
-                <div class="field">
-                    <label for="proxy">HTTP Proxy</label>
-                    <input type="text" id="proxy" placeholder="http://proxy.company.com:8080">
-                    <div class="hint">Route requests through a proxy. Credentials are forwarded — use only with trusted proxies.</div>
+            <!-- GENERAL -->
+            <section class="settings-section active" id="general" aria-labelledby="general-title">
+                <div class="section-header">
+                    <h1 class="section-title" id="general-title">General</h1>
                 </div>
-                <div class="field">
-                    <label for="apiVersion">OpenGrok REST API Version</label>
-                    <select id="apiVersion">
-                        <option value="v1">v1 &mdash; Compatible with all OpenGrok versions (default)</option>
-                        <option value="v2">v2 &mdash; Required for call graph features (OpenGrok 1.12+)</option>
-                    </select>
-                </div>
-                <div class="field">
-                    <label for="responseFormatOverride">AI Response Format</label>
-                    <select id="responseFormatOverride">
-                        <option value="">Auto &mdash; let each tool choose the best format</option>
-                        <option value="tsv">TSV &mdash; compact tabular</option>
-                        <option value="toon">TOON &mdash; token-optimized notation</option>
-                        <option value="markdown">Markdown &mdash; verbose but readable</option>
-                        <option value="json">JSON &mdash; programmatic use</option>
-                        <option value="yaml">YAML &mdash; hierarchical data</option>
-                        <option value="text">Text &mdash; raw code, no framing</option>
-                    </select>
-                    <div class="hint">Controls how results are formatted before being sent to the AI. Auto is best for most users.</div>
-                </div>
-                <div class="field">
-                    <label for="memoryBankDir">Investigation Notes Location</label>
-                    <input type="text" id="memoryBankDir" placeholder="Default: &lt;workspace&gt;/.opengrok/memory-bank/">
-                    <div class="hint">Where the AI stores investigation notes between sessions. Leave blank for default.</div>
-                </div>
-                <div class="field">
-                    <label for="compileDbPaths">C/C++ Compile Commands Paths</label>
-                    <input type="text" id="compileDbPaths" placeholder="Comma-separated paths to compile_commands.json">
-                    <div class="hint">Paths for C/C++ compiler flag extraction. Leave blank for automatic workspace discovery.</div>
-                </div>
-                <div class="checkbox-field">
-                    <input type="checkbox" id="enableFilesApi">
-                    <div class="checkbox-content">
-                        <label for="enableFilesApi">Files API Cache</label>
-                        <div class="checkbox-subtext">Avoids re-uploading unchanged investigation notes to the AI. Requires Files API support in your MCP client.</div>
+                <div class="settings-group">
+                    <h3 class="subsection-title">Account</h3>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="username">Username</label><div class="setting-description">Account username (leave blank for anonymous access)</div></div>
+                        <div class="setting-control"><input type="text" id="username" placeholder="e.g. jdoe" autocomplete="username"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="password">Password</label><div class="setting-description">Stored securely in the OS keychain</div></div>
+                        <div class="setting-control">
+                            <div class="control-stack">
+                                <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password">
+                                <div class="field-hint" id="passwordHint">Stored securely in OS keychain</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">Connection</label><div class="setting-description">Verify connectivity and credentials</div></div>
+                        <div class="setting-control">
+                            <div class="control-stack">
+                                <button type="button" class="btn-primary" id="testOpengrokBtn">Test OpenGrok</button>
+                                <div class="field-hint" id="opengrokTestResult"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="checkbox-field">
-                    <input type="checkbox" id="enableSampling">
-                    <div class="checkbox-content">
-                        <label for="enableSampling">AI Sampling</label>
-                        <div class="checkbox-subtext">Allow the server to request LLM completions for error explanations and summaries. Off by default to avoid consuming premium requests (e.g. GitHub Copilot).</div>
+            </section>
+
+            <!-- FEATURES -->
+            <section class="settings-section" id="features" aria-labelledby="features-title">
+                <div class="section-header">
+                    <h1 class="section-title" id="features-title">Features</h1>
+                </div>
+                <div class="settings-group">
+                    <div class="setting-row tall">
+                        <div class="setting-info"><label class="setting-label">Code Mode <span class="badge">Recommended</span></label><div class="setting-description">Sandboxed JavaScript runtime for multi-step code investigations. Reduces AI token usage by ~90%.</div></div>
+                        <div class="setting-control">
+                            <div class="control-stack">
+                                <div class="pill-toggle" id="codeModePill">
+                                    <input type="radio" name="codeMode" id="codeModeOn" value="on" checked><label class="pill-option" for="codeModeOn">Enabled</label>
+                                    <input type="radio" name="codeMode" id="codeModeOff" value="off"><label class="pill-option" for="codeModeOff">Legacy</label>
+                                </div>
+                                <div class="warning" id="codeModeWarning">Turning Code Mode off uses legacy tools. New tools and future capabilities are supported in Code Mode only.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">Interactive AI prompts</label><div class="setting-description">The AI can pause to ask questions during investigations. Requires a client that supports MCP Elicitation.</div></div>
+                        <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="enableElicitation" name="enableElicitation"><span class="toggle-track"></span></label></div>
+                    </div>
+                    <div class="setting-row" id="enableMemoryToolsRow">
+                        <div class="setting-info"><label class="setting-label">Memory tools</label><div class="setting-description">Persistent investigation notes across sessions (adds 3 Code Mode tools; off = api + execute only).</div></div>
+                        <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="enableMemoryTools" name="enableMemoryTools"><span class="toggle-track"></span></label></div>
+                    </div>
+                    <div class="setting-row" id="memoryBankDirRow" data-visible-when="enableMemoryTools">
+                        <div class="setting-info"><label class="setting-label" for="memoryBankDir">Investigation notes location</label><div class="setting-description">Where the AI stores investigation notes between sessions. Leave blank for default.</div></div>
+                        <div class="setting-control"><input type="text" id="memoryBankDir" placeholder="Default: &lt;workspace&gt;/.opengrok/memory-bank/"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="contextBudget">Response detail</label><div class="setting-description">How much context the AI receives per tool response</div></div>
+                        <div class="setting-control">
+                            <select id="contextBudget">
+                                <option value="minimal">Compact (8 KB)</option>
+                                <option value="standard" selected>Standard (16 KB)</option>
+                                <option value="generous">Detailed (32 KB)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">AI sampling</label><div class="setting-description">Allow the server to request completions for error explanations and summaries. Off by default.</div></div>
+                        <div class="setting-control">
+                            <div class="control-stack">
+                                <label class="toggle-switch"><input type="checkbox" id="enableSampling" name="enableSampling"><span class="toggle-track"></span></label>
+                                <div class="field-hint caution" id="samplingCaution" style="display:none;">Each sampling call may use extra tokens from your plan.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row" id="samplingModelRow" data-visible-when="enableSampling">
+                        <div class="setting-info"><label class="setting-label" for="samplingModel">Sampling model</label><div class="setting-description">Preferred model for sampling calls (blank = client default)</div></div>
+                        <div class="setting-control"><input type="text" id="samplingModel" placeholder="Leave blank for client default"></div>
+                    </div>
+                    <div class="setting-row" id="samplingMaxTokensRow" data-visible-when="enableSampling">
+                        <div class="setting-info"><label class="setting-label" for="samplingMaxTokens">Sampling token budget</label><div class="setting-description">Maximum tokens for sampling responses (64-4096)</div></div>
+                        <div class="setting-control"><input type="number" id="samplingMaxTokens" placeholder="256" min="64" max="4096"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">Observation masker</label><div class="setting-description">Prepend compact history summaries after the full-text window fills</div></div>
+                        <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="enableObservationMasker" name="enableObservationMasker"><span class="toggle-track"></span></label></div>
+                    </div>
+                    <div class="setting-row" id="observationMaskerTurnsRow" data-visible-when="enableObservationMasker">
+                        <div class="setting-info"><label class="setting-label" for="observationMaskerTurns">Full-text window</label><div class="setting-description">Recent results to keep in full before summarizing older ones</div></div>
+                        <div class="setting-control"><input type="number" id="observationMaskerTurns" placeholder="10" min="1"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">Files API cache</label><div class="setting-description">Avoid re-uploading unchanged investigation notes to the AI</div></div>
+                        <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="enableFilesApi" name="enableFilesApi"><span class="toggle-track"></span></label></div>
                     </div>
                 </div>
-                <div class="field">
-                    <label for="samplingModel">AI Sampling Model</label>
-                    <input type="text" id="samplingModel" placeholder="Leave blank for client default">
-                    <div class="hint">Preferred model for AI sampling (error explanations, query reformulation).</div>
+            </section>
+
+            <!-- NETWORK -->
+            <section class="settings-section" id="network" aria-labelledby="network-title">
+                <div class="section-header">
+                    <h1 class="section-title" id="network-title">Network</h1>
                 </div>
-                <div class="field">
-                    <label for="samplingMaxTokens">AI Sampling Token Budget</label>
-                    <input type="number" id="samplingMaxTokens" placeholder="256" min="64" max="4096">
-                    <div class="hint">Maximum tokens for AI sampling responses. Range: 64–4096.</div>
-                </div>
-                <div class="field">
-                    <label for="auditLogFile">Audit Log File</label>
-                    <input type="text" id="auditLogFile" placeholder="Leave blank to disable">
-                    <div class="hint">Write structured audit events (tool calls, prompts, errors) to a file. CSV/JSON format.</div>
-                </div>
-                <div class="field">
-                    <label for="rateLimitRpm">Request Rate Limit (RPM)</label>
-                    <input type="number" id="rateLimitRpm" placeholder="60" min="1">
-                    <div class="hint">Maximum requests per minute sent to the OpenGrok server.</div>
-                </div>
-                <div class="field">
-                    <label for="timeout">Request Timeout (seconds)</label>
-                    <input type="number" id="timeout" placeholder="30" min="1">
-                    <div class="hint">HTTP request timeout for OpenGrok API calls. Increase for slow servers. Default: 30.</div>
-                </div>
-                <div class="field">
-                    <label for="defaultMaxResults">Default Max Results</label>
-                    <input type="number" id="defaultMaxResults" placeholder="25" min="1">
-                    <div class="hint">Default number of results returned per search query. Default: 25.</div>
-                </div>
-                <div class="checkbox-field">
-                    <input type="checkbox" id="enableObservationMasker">
-                    <div class="checkbox-content">
-                        <label for="enableObservationMasker">Observation Masker</label>
-                        <div class="checkbox-subtext">Prepend compact history summaries to opengrok_execute results after N turns. Only useful for MCP clients that truncate context (e.g. limited-window clients). No benefit for Claude Code or Cursor.</div>
+                <div class="settings-group">
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="baseUrl">OpenGrok URL</label><div class="setting-description">Server base URL (include trailing slash)</div></div>
+                        <div class="setting-control"><input type="url" id="baseUrl" placeholder="https://opengrok.example.com/source/"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label">Verify SSL/TLS</label><div class="setting-description">Validate server certificates. Disable only for self-signed or internal certificates.</div></div>
+                        <div class="setting-control"><label class="toggle-switch"><input type="checkbox" id="verifySsl" name="verifySsl" checked><span class="toggle-track"></span></label></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="proxy">HTTP proxy</label><div class="setting-description">Route requests through a proxy. Credentials are forwarded &#8212; use only with trusted proxies.</div></div>
+                        <div class="setting-control"><input type="text" id="proxy" placeholder="http://proxy.example.com:8080"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="rateLimitRpm">Rate limit</label><div class="setting-description">Maximum requests per minute sent to the server</div></div>
+                        <div class="setting-control"><input type="number" id="rateLimitRpm" placeholder="60" min="1"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="timeout">Timeout</label><div class="setting-description">HTTP request timeout in seconds. Increase for slow servers.</div></div>
+                        <div class="setting-control"><input type="number" id="timeout" placeholder="30" min="1"></div>
                     </div>
                 </div>
-                <div class="field">
-                    <label for="observationMaskerTurns">Observation Masker — Full-Text Window</label>
-                    <input type="number" id="observationMaskerTurns" placeholder="10" min="1">
-                    <div class="hint">How many of the most-recent opengrok_execute results to keep in full. Once more than this many accumulate, older results are replaced with compact summaries. Default: 10.</div>
+            </section>
+
+            <!-- ADVANCED -->
+            <section class="settings-section" id="advanced" aria-labelledby="advanced-title">
+                <div class="section-header">
+                    <h1 class="section-title" id="advanced-title">Advanced</h1>
                 </div>
-            </div>
+                <div class="settings-group">
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="apiVersion">REST API version</label><div class="setting-description">v1 works with all versions. v2 is required for call graph features.</div></div>
+                        <div class="setting-control">
+                            <select id="apiVersion">
+                                <option value="v1">v1 &#8212; Compatible with all versions (default)</option>
+                                <option value="v2">v2 &#8212; Required for call graph features</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="defaultProject">Default project</label><div class="setting-description">Scope all searches to this project unless overridden</div></div>
+                        <div class="setting-control">
+                            <div class="control-stack">
+                                <div class="custom-select" id="projectSelectWrap">
+                                    <button type="button" class="custom-select-trigger" id="projectTrigger" aria-haspopup="listbox" aria-expanded="false">
+                                        <span id="projectLabel">All projects</span>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                    </button>
+                                    <ul class="custom-select-options" id="projectOptions" role="listbox" tabindex="-1">
+                                        <li role="option" data-value="" class="selected">All projects</li>
+                                    </ul>
+                                    <input type="hidden" id="defaultProject" value="">
+                                </div>
+                                <div class="field-hint" id="projectHint">Leave blank to search all projects.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="responseFormatOverride">Response format</label><div class="setting-description">Override how results are formatted for the AI. Auto is best for most users.</div></div>
+                        <div class="setting-control">
+                            <select id="responseFormatOverride">
+                                <option value="">Auto &#8212; let each tool choose the best format</option>
+                                <option value="tsv">TSV &#8212; compact tabular</option>
+                                <option value="toon">TOON &#8212; token-optimized notation</option>
+                                <option value="markdown">Markdown &#8212; verbose but readable</option>
+                                <option value="json">JSON &#8212; programmatic use</option>
+                                <option value="yaml">YAML &#8212; hierarchical data</option>
+                                <option value="text">Text &#8212; raw code, no framing</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="compileDbPaths">C/C++ compile commands</label><div class="setting-description">Paths for compiler flag extraction. Leave blank for automatic discovery.</div></div>
+                        <div class="setting-control"><input type="text" id="compileDbPaths" placeholder="Comma-separated paths to compile_commands.json"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="auditLogFile">Audit log file</label><div class="setting-description">Write structured audit events (tool calls, prompts, errors) to a file</div></div>
+                        <div class="setting-control"><input type="text" id="auditLogFile" placeholder="Leave blank to disable"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="defaultMaxResults">Default max results</label><div class="setting-description">Default number of results returned per search query</div></div>
+                        <div class="setting-control"><input type="number" id="defaultMaxResults" placeholder="25" min="1"></div>
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info"><label class="setting-label" for="maxResponseBytes">Max response size (bytes)</label><div class="setting-description">Hard cap on response payload size. Overrides the context budget tier. 0 uses the budget default.</div></div>
+                        <div class="setting-control"><input type="number" id="maxResponseBytes" placeholder="0 = use context budget" min="0"></div>
+                    </div>
+                </div>
+            </section>
+
         </div>
-    </details>
+    </main>
+</div>
 
-    <hr class="divider">
-
-    <!-- Actions -->
-    <div class="actions">
-        <button class="btn-secondary" id="testBtn" aria-label="Test Connection">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
-            Test Connection
-        </button>
-        <button class="btn-primary" id="saveBtn" aria-label="Save Configuration">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-            Save
-        </button>
+<div class="actions-bar">
+    <div class="status-wrap">
+        <div id="statusBar"></div>
     </div>
-    <div class="note">Changes take effect when you click Save.</div>
+    <div class="button-group">
+        <button class="btn-primary" id="saveBtn" type="button">Save</button>
+    </div>
+</div>
 
-    <div id="statusBar"></div>
-
-    </div><!-- /configBody -->
-
-    <div class="toast-container" id="toastContainer"></div>
+<div class="toast-container" id="toastContainer"></div>
 
     <script nonce="WEBVIEW_NONCE">
-        var vscode = acquireVsCodeApi();
-        var currentConfig = {};
+var vscode = acquireVsCodeApi();
+var currentConfig = {};
 
-        var SAVE_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>';
-        var TEST_SVG = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>';
+function byId(id) { return document.getElementById(id); }
+function setValue(id, val) { var el = byId(id); if (el) el.value = val == null ? '' : String(val); }
+function value(id) { var el = byId(id); return el ? String(el.value || '').trim() : ''; }
+function rawValue(id) { var el = byId(id); return el ? String(el.value || '') : ''; }
+function isChecked(id) { var el = byId(id); return el ? el.checked : false; }
+function setChecked(id, val) { var el = byId(id); if (el) el.checked = !!val; }
 
-        function showToast(type, text) {
-            var container = document.getElementById('toastContainer');
-            var toast = document.createElement('div');
-            toast.className = 'toast ' + type;
-            toast.textContent = text;
-            container.appendChild(toast);
-            requestAnimationFrame(function() { toast.classList.add('show'); });
-            setTimeout(function() {
-                toast.classList.remove('show');
-                setTimeout(function() { toast.remove(); }, 300);
-            }, 4000);
+function pillChecked(name) {
+    var radios = document.querySelectorAll('input[name="' + name + '"]');
+    for (var i = 0; i < radios.length; i++) {
+        if (radios[i].checked) return radios[i].value === 'on';
+    }
+    return false;
+}
+
+function setPill(name, isOn) {
+    var onEl = document.querySelector('input[name="' + name + '"][value="on"]');
+    var offEl = document.querySelector('input[name="' + name + '"][value="off"]');
+    if (onEl) onEl.checked = isOn;
+    if (offEl) offEl.checked = !isOn;
+}
+
+function showToast(type, text) {
+    var container = byId('toastContainer');
+    var toast = document.createElement('div');
+    toast.className = 'toast ' + type;
+    toast.textContent = text;
+    container.appendChild(toast);
+    requestAnimationFrame(function() { toast.classList.add('show'); });
+    setTimeout(function() {
+        toast.classList.remove('show');
+        setTimeout(function() { toast.remove(); }, 220);
+    }, 4200);
+}
+
+function setStatusBar(type, text) {
+    var bar = byId('statusBar');
+    bar.className = type;
+    bar.textContent = text;
+}
+
+function clearStatusBar() { setStatusBar('', ''); }
+
+function setLoading(btnId, isLoading, label) {
+    var btn = byId(btnId);
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.textContent = isLoading ? label + '...' : label;
+}
+
+function setTestLoading(isLoading) {
+    setLoading('testOpengrokBtn', isLoading, 'Testing');
+}
+
+function activateSection(sectionId) {
+    document.querySelectorAll('.nav-button').forEach(function(button) {
+        button.classList.toggle('active', button.getAttribute('data-section') === sectionId);
+    });
+    document.querySelectorAll('.settings-section').forEach(function(section) {
+        section.classList.toggle('active', section.id === sectionId);
+    });
+}
+
+function updatePillStates() {
+    var codeMode = pillChecked('codeMode');
+    var warning = byId('codeModeWarning');
+    if (warning) warning.classList.toggle('visible', !codeMode);
+    updateConditionalRows();
+}
+
+function updateConditionalRows() {
+    var rows = document.querySelectorAll('[data-visible-when]');
+    for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        var field = row.getAttribute('data-visible-when');
+        row.style.display = isChecked(field) ? '' : 'none';
+    }
+    var caution = byId('samplingCaution');
+    if (caution) caution.style.display = isChecked('enableSampling') ? '' : 'none';
+}
+
+function readNumeric(id, fallback) {
+    var parsed = parseInt(value(id), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function connectionFields() {
+    return {
+        baseUrl: value('baseUrl'),
+        username: value('username'),
+        password: rawValue('password'),
+        proxy: value('proxy'),
+        verifySsl: isChecked('verifySsl'),
+        apiVersion: value('apiVersion') || 'v1'
+    };
+}
+
+function validateConnectionFields(fields) {
+    if (!fields.baseUrl) { activateSection('network'); showToast('error', 'URL is required'); return false; }
+    if (fields.username && !fields.password && !currentConfig.hasPassword) { activateSection('general'); showToast('error', 'Password is required for authenticated connections'); return false; }
+    try {
+        var parsed = new URL(fields.baseUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+            activateSection('network'); showToast('error', 'URL must use http:// or https://'); return false;
         }
+    } catch (e) { activateSection('network'); showToast('error', 'Please enter a valid URL'); return false; }
+    return true;
+}
 
-        function setStatusBar(type, text) {
-            var bar = document.getElementById('statusBar');
-            bar.className = type;
-            bar.textContent = text;
+function testConnection() {
+    var fields = connectionFields();
+    if (!validateConnectionFields(fields)) return;
+    setTestLoading(true);
+    setStatusBar('info', 'Testing connection...');
+    vscode.postMessage({ type: 'testConnection', data: fields });
+}
+
+function fetchProjects() {
+    var fields = connectionFields();
+    if (!fields.baseUrl) return;
+    var hint = byId('projectHint');
+    if (hint) hint.textContent = 'Loading projects...';
+    vscode.postMessage({ type: 'fetchProjects', data: fields });
+}
+
+function populateProjectList(projects) {
+    var optionsList = byId('projectOptions');
+    var hiddenInput = byId('defaultProject');
+    var label = byId('projectLabel');
+    var hint = byId('projectHint');
+    if (!optionsList || !hiddenInput) return;
+    var current = hiddenInput.value;
+    var sorted = (projects || []).slice().sort(function(a, b) { return String(a).localeCompare(String(b)); });
+    while (optionsList.firstChild) optionsList.removeChild(optionsList.firstChild);
+    var allLi = document.createElement('li');
+    allLi.setAttribute('role', 'option');
+    allLi.setAttribute('data-value', '');
+    allLi.textContent = 'All projects';
+    if (!current) allLi.classList.add('selected');
+    optionsList.appendChild(allLi);
+    for (var i = 0; i < sorted.length; i++) {
+        var li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.setAttribute('data-value', sorted[i]);
+        li.textContent = sorted[i];
+        if (current && sorted[i] === current) li.classList.add('selected');
+        optionsList.appendChild(li);
+    }
+    if (label) label.textContent = current || 'All projects';
+    if (hint) {
+        hint.textContent = sorted.length > 0
+            ? sorted.length + ' project' + (sorted.length !== 1 ? 's' : '') + ' available.'
+            : 'Could not load projects. Leave blank to search all.';
+    }
+}
+
+(function initProjectSelect() {
+    var wrap = byId('projectSelectWrap');
+    var trigger = byId('projectTrigger');
+    var optionsList = byId('projectOptions');
+    var hiddenInput = byId('defaultProject');
+    var label = byId('projectLabel');
+    if (!wrap || !trigger || !optionsList || !hiddenInput) return;
+
+    trigger.addEventListener('click', function() {
+        var isOpen = wrap.classList.toggle('open');
+        trigger.setAttribute('aria-expanded', String(isOpen));
+        if (isOpen) {
+            var sel = optionsList.querySelector('.selected');
+            if (sel) sel.scrollIntoView({ block: 'nearest' });
         }
+    });
 
-        function clearStatusBar() {
-            var bar = document.getElementById('statusBar');
-            bar.className = '';
-            bar.textContent = '';
+    optionsList.addEventListener('click', function(e) {
+        var li = e.target.closest('li');
+        if (!li) return;
+        var val = li.getAttribute('data-value') || '';
+        hiddenInput.value = val;
+        if (label) label.textContent = li.textContent;
+        var items = optionsList.querySelectorAll('li');
+        for (var i = 0; i < items.length; i++) items[i].classList.remove('selected');
+        li.classList.add('selected');
+        wrap.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!wrap.contains(e.target)) {
+            wrap.classList.remove('open');
+            trigger.setAttribute('aria-expanded', 'false');
         }
+    });
+})();
 
-        function updateStatusDisplay(state) {
-            var pill = document.getElementById('statusPill');
-            var text = document.getElementById('statusText');
-            pill.className = 'status-pill';
-            if (state === 'connected') {
-                pill.classList.add('active', 'connected');
-                text.textContent = 'Connected';
-            } else if (state === 'error') {
-                pill.classList.add('error');
-                text.textContent = 'Error';
-            } else if (state === 'active') {
-                pill.classList.add('active');
-                text.textContent = 'Configured';
+function saveConfiguration() {
+    var fields = connectionFields();
+    if (!validateConnectionFields(fields)) return;
+    var codeMode = pillChecked('codeMode');
+    var codeModeChanged = currentConfig.codeMode !== undefined && !!currentConfig.codeMode !== codeMode;
+    var maxResponseBytes = parseInt(value('maxResponseBytes'), 10);
+    if (!Number.isFinite(maxResponseBytes) || maxResponseBytes < 0) maxResponseBytes = 0;
+    setLoading('saveBtn', true, 'Saving');
+    clearStatusBar();
+    vscode.postMessage({
+        type: 'saveConfiguration',
+        data: {
+            baseUrl: fields.baseUrl,
+            username: fields.username,
+            password: fields.password,
+            proxy: fields.proxy,
+            verifySsl: fields.verifySsl,
+            defaultProject: value('defaultProject'),
+            contextBudget: value('contextBudget') || 'standard',
+            responseFormatOverride: value('responseFormatOverride'),
+            apiVersion: fields.apiVersion,
+            codeMode: codeMode,
+            memoryBankDir: value('memoryBankDir'),
+            compileDbPaths: value('compileDbPaths'),
+            codeModeChanged: codeModeChanged,
+            enableElicitation: isChecked('enableElicitation'),
+            enableMemoryTools: isChecked('enableMemoryTools'),
+            enableFilesApi: isChecked('enableFilesApi'),
+            enableSampling: isChecked('enableSampling'),
+            samplingModel: value('samplingModel'),
+            samplingMaxTokens: readNumeric('samplingMaxTokens', 256),
+            auditLogFile: value('auditLogFile'),
+            rateLimitRpm: readNumeric('rateLimitRpm', 60),
+            timeout: readNumeric('timeout', 30),
+            defaultMaxResults: readNumeric('defaultMaxResults', 25),
+            enableObservationMasker: isChecked('enableObservationMasker'),
+            observationMaskerTurns: readNumeric('observationMaskerTurns', 10),
+            maxResponseBytes: maxResponseBytes
+        }
+    });
+}
+
+window.addEventListener('message', function(event) {
+    if (event.origin && event.origin !== window.origin) return;
+    var message = event.data;
+    switch (message.type) {
+        case 'loadConfig': {
+            currentConfig = message.config || {};
+            setValue('baseUrl', currentConfig.baseUrl || '');
+            setValue('username', currentConfig.username || '');
+            setValue('proxy', currentConfig.proxy || '');
+            setValue('defaultProject', currentConfig.defaultProject || '');
+            var projLabel = byId('projectLabel');
+            if (projLabel) projLabel.textContent = currentConfig.defaultProject || 'All projects';
+            setChecked('verifySsl', currentConfig.verifySsl !== false);
+            setValue('contextBudget', currentConfig.contextBudget || 'standard');
+            setValue('responseFormatOverride', currentConfig.responseFormatOverride || '');
+            setValue('apiVersion', currentConfig.apiVersion || 'v1');
+            setPill('codeMode', currentConfig.codeMode !== false);
+            setChecked('enableMemoryTools', currentConfig.enableMemoryTools === true);
+            setValue('memoryBankDir', currentConfig.memoryBankDir || '');
+            setValue('compileDbPaths', currentConfig.compileDbPaths || '');
+            setValue('password', '');
+            if (currentConfig.enableElicitation !== undefined) {
+                setChecked('enableElicitation', currentConfig.enableElicitation);
+            }
+            if (currentConfig.enableFilesApi !== undefined) {
+                setChecked('enableFilesApi', currentConfig.enableFilesApi);
+            }
+            setChecked('enableSampling', currentConfig.enableSampling === true);
+            setValue('samplingModel', currentConfig.samplingModel || '');
+            if (currentConfig.samplingMaxTokens !== undefined) {
+                setValue('samplingMaxTokens', currentConfig.samplingMaxTokens || 256);
+            }
+            setValue('auditLogFile', currentConfig.auditLogFile || '');
+            if (currentConfig.rateLimitRpm !== undefined) {
+                setValue('rateLimitRpm', currentConfig.rateLimitRpm || 60);
+            }
+            if (currentConfig.timeout !== undefined) {
+                setValue('timeout', currentConfig.timeout || 30);
+            }
+            if (currentConfig.defaultMaxResults !== undefined) {
+                setValue('defaultMaxResults', currentConfig.defaultMaxResults || 25);
+            }
+            if (currentConfig.enableObservationMasker !== undefined) {
+                setChecked('enableObservationMasker', currentConfig.enableObservationMasker);
+            }
+            if (currentConfig.observationMaskerTurns !== undefined) {
+                setValue('observationMaskerTurns', currentConfig.observationMaskerTurns || 10);
+            }
+            if (currentConfig.maxResponseBytes !== undefined) {
+                setValue('maxResponseBytes', currentConfig.maxResponseBytes || 0);
+            }
+
+            var pInput = byId('password');
+            var pHint = byId('passwordHint');
+            if (currentConfig.hasPassword) {
+                pInput.placeholder = 'Leave empty to keep existing password';
+                pHint.textContent = 'Existing password stored securely';
             } else {
-                text.textContent = 'Not Configured';
+                pInput.placeholder = 'Enter your password';
+                pHint.textContent = 'Stored securely in OS keychain';
             }
-        }
 
-        function setLoading(btnId, isLoading, label, svgStr) {
-            var btn = document.getElementById(btnId);
-            btn.disabled = isLoading;
-            while (btn.firstChild) btn.removeChild(btn.firstChild);
-            if (isLoading) {
-                btn.textContent = label + '…';
-            } else {
-                var tmp = document.createElement('span');
-                tmp.innerHTML = svgStr;
-                var icon = tmp.firstElementChild;
-                if (icon) btn.appendChild(icon);
-                btn.appendChild(document.createTextNode(' ' + label));
+            updatePillStates();
+
+            // Always land on General — the panel opens for credentials first.
+            activateSection('general');
+
+            setStatusBar(currentConfig.username ? 'success' : '', currentConfig.username ? 'Configured' : '');
+            if (currentConfig.username && currentConfig.hasPassword) {
+                fetchProjects();
             }
+            break;
         }
-
-        function testConnection() {
-            var baseUrl = document.getElementById('baseUrl').value.trim();
-            var username = document.getElementById('username').value.trim();
-            var password = document.getElementById('password').value;
-            var verifySsl = document.getElementById('verifySsl').checked;
-            var proxy = document.getElementById('proxy').value.trim();
-            var apiVersion = document.getElementById('apiVersion').value;
-
-            if (!baseUrl) { showToast('error', 'URL is required'); return; }
-            // Password only required when a username is set (anonymous access is allowed)
-            if (username && !password && !currentConfig.hasPassword) { showToast('error', 'Password is required for authenticated connections'); return; }
-
-            setLoading('testBtn', true, 'Testing', TEST_SVG);
-            setStatusBar('info', 'Testing connection…');
-
-            // Always send testConnection — the extension looks up saved password if field is empty
-            vscode.postMessage({ type: 'testConnection', data: { baseUrl: baseUrl, username: username, password: password, proxy: proxy, verifySsl: verifySsl, apiVersion: apiVersion } });
-        }
-
-        function saveConfiguration() {
-            var baseUrl = document.getElementById('baseUrl').value.trim();
-            var username = document.getElementById('username').value.trim();
-            var password = document.getElementById('password').value;
-            var proxy = document.getElementById('proxy').value.trim();
-            var verifySsl = document.getElementById('verifySsl').checked;
-            var defaultProject = document.getElementById('defaultProject').value.trim();
-            var contextBudget = document.getElementById('contextBudget').value;
-            var responseFormatOverride = document.getElementById('responseFormatOverride').value;
-            var apiVersion = document.getElementById('apiVersion').value;
-            var codeMode = document.getElementById('codeMode').checked;
-            var memoryBankDir = document.getElementById('memoryBankDir').value.trim();
-            var compileDbPaths = document.getElementById('compileDbPaths').value.trim();
-            var enableElicitation = document.getElementById('enableElicitation').checked;
-            var enableFilesApi = document.getElementById('enableFilesApi').checked;
-            var enableSampling = document.getElementById('enableSampling').checked;
-            var samplingModel = document.getElementById('samplingModel').value.trim();
-            var samplingMaxTokens = parseInt(document.getElementById('samplingMaxTokens').value, 10) || 256;
-            var auditLogFile = document.getElementById('auditLogFile').value.trim();
-            var rateLimitRpm = parseInt(document.getElementById('rateLimitRpm').value, 10) || 60;
-            var timeout = parseInt(document.getElementById('timeout').value, 10) || 30;
-            var defaultMaxResults = parseInt(document.getElementById('defaultMaxResults').value, 10) || 25;
-            var enableObservationMasker = document.getElementById('enableObservationMasker').checked;
-            var observationMaskerTurns = parseInt(document.getElementById('observationMaskerTurns').value, 10) || 10;
-
-            if (!baseUrl) { showToast('error', 'URL is required'); return; }
-            if (username && !password && !currentConfig.hasPassword) { showToast('error', 'Password required for authenticated connections'); return; }
-            try {
-                var parsed = new URL(baseUrl);
-                if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-                    showToast('error', 'URL must use http:// or https://'); return;
-                }
-            } catch(e) { showToast('error', 'Please enter a valid URL'); return; }
-
-            var codeModeChanged = currentConfig.codeMode !== undefined && !!currentConfig.codeMode !== codeMode;
-            setLoading('saveBtn', true, 'Saving', SAVE_SVG);
-            clearStatusBar();
-            vscode.postMessage({
-                type: 'saveConfiguration',
-                data: { baseUrl: baseUrl, username: username, password: password, proxy: proxy, verifySsl: verifySsl, defaultProject: defaultProject, contextBudget: contextBudget, responseFormatOverride: responseFormatOverride, apiVersion: apiVersion, codeMode: codeMode, memoryBankDir: memoryBankDir, compileDbPaths: compileDbPaths, codeModeChanged: codeModeChanged, enableElicitation: enableElicitation, enableFilesApi: enableFilesApi, enableSampling: enableSampling, samplingModel: samplingModel, samplingMaxTokens: samplingMaxTokens, auditLogFile: auditLogFile, rateLimitRpm: rateLimitRpm, timeout: timeout, defaultMaxResults: defaultMaxResults, enableObservationMasker: enableObservationMasker, observationMaskerTurns: observationMaskerTurns }
-            });
-        }
-
-        window.addEventListener('message', function(event) {
-            if (event.origin && event.origin !== window.origin) return;
-            var message = event.data;
-            switch (message.type) {
-                case 'loadConfig': {
-                    currentConfig = message.config || {};
-                    document.getElementById('baseUrl').value = currentConfig.baseUrl || '';
-                    document.getElementById('username').value = currentConfig.username || '';
-                    document.getElementById('proxy').value = currentConfig.proxy || '';
-                    document.getElementById('defaultProject').value = currentConfig.defaultProject || '';
-                    document.getElementById('verifySsl').checked = currentConfig.verifySsl !== false;
-                    document.getElementById('contextBudget').value = currentConfig.contextBudget || 'standard';
-                    document.getElementById('responseFormatOverride').value = currentConfig.responseFormatOverride || '';
-                    document.getElementById('apiVersion').value = currentConfig.apiVersion || 'v1';
-                    document.getElementById('codeMode').checked = currentConfig.codeMode !== false;
-                    document.getElementById('memoryBankDir').value = currentConfig.memoryBankDir || '';
-                    document.getElementById('compileDbPaths').value = currentConfig.compileDbPaths || '';
-                    document.getElementById('password').value = '';
-                    if (currentConfig.enableElicitation !== undefined) {
-                        document.getElementById('enableElicitation').checked = currentConfig.enableElicitation;
-                    }
-                    if (currentConfig.enableFilesApi !== undefined) {
-                        document.getElementById('enableFilesApi').checked = currentConfig.enableFilesApi;
-                    }
-                    document.getElementById('enableSampling').checked = currentConfig.enableSampling === true;
-                    document.getElementById('samplingModel').value = currentConfig.samplingModel || '';
-                    if (currentConfig.samplingMaxTokens !== undefined) {
-                        document.getElementById('samplingMaxTokens').value = currentConfig.samplingMaxTokens || 256;
-                    }
-                    document.getElementById('auditLogFile').value = currentConfig.auditLogFile || '';
-                    if (currentConfig.rateLimitRpm !== undefined) {
-                        document.getElementById('rateLimitRpm').value = currentConfig.rateLimitRpm || 60;
-                    }
-                    if (currentConfig.timeout !== undefined) {
-                        document.getElementById('timeout').value = currentConfig.timeout || 30;
-                    }
-                    if (currentConfig.defaultMaxResults !== undefined) {
-                        document.getElementById('defaultMaxResults').value = currentConfig.defaultMaxResults || 25;
-                    }
-                    if (currentConfig.enableObservationMasker !== undefined) {
-                        document.getElementById('enableObservationMasker').checked = currentConfig.enableObservationMasker;
-                    }
-                    if (currentConfig.observationMaskerTurns !== undefined) {
-                        document.getElementById('observationMaskerTurns').value = currentConfig.observationMaskerTurns || 10;
-                    }
-
-                    var pInput = document.getElementById('password');
-                    var pHint = document.getElementById('passwordHint');
-                    if (currentConfig.hasPassword) {
-                        pInput.placeholder = 'Leave empty to keep existing password';
-                        pHint.textContent = '● Existing password stored securely';
-                    } else {
-                        pInput.placeholder = 'Enter your password';
-                        pHint.textContent = 'Stored securely in OS keychain';
-                    }
-
-                    var hasAdvanced = (currentConfig.proxy || currentConfig.responseFormatOverride ||
-                        (currentConfig.apiVersion && currentConfig.apiVersion !== 'v1') ||
-                        currentConfig.memoryBankDir || currentConfig.compileDbPaths ||
-                        currentConfig.enableFilesApi || currentConfig.enableSampling === true ||
-                        currentConfig.samplingModel ||
-                        (currentConfig.samplingMaxTokens && currentConfig.samplingMaxTokens !== 256) ||
-                        currentConfig.auditLogFile ||
-                        (currentConfig.rateLimitRpm && currentConfig.rateLimitRpm !== 60) ||
-                        (currentConfig.timeout && currentConfig.timeout !== 30) ||
-                        (currentConfig.defaultMaxResults && currentConfig.defaultMaxResults !== 25) ||
-                        currentConfig.enableObservationMasker ||
-                        (currentConfig.observationMaskerTurns && currentConfig.observationMaskerTurns !== 10));
-                    if (hasAdvanced) {
-                        document.getElementById('advancedSection').open = true;
-                    }
-
-                    updateStatusDisplay(currentConfig.username ? 'active' : '');
-                    document.getElementById('configBody').classList.add('loaded');
-                    break;
-                }
-                case 'error':
-                    showToast('error', message.message);
-                    setStatusBar('error', message.message);
-                    setLoading('testBtn', false, 'Test Connection', TEST_SVG);
-                    setLoading('saveBtn', false, 'Save', SAVE_SVG);
-                    updateStatusDisplay('error');
-                    break;
-                case 'success':
-                    showToast('success', message.message);
-                    setStatusBar('success', message.message);
-                    currentConfig.hasPassword = true;
-                    currentConfig.codeMode = document.getElementById('codeMode').checked;
-                    updateStatusDisplay('active');
-                    setLoading('saveBtn', false, 'Save', SAVE_SVG);
-                    setTimeout(function() { vscode.postMessage({ type: 'silentTestConnection' }); }, 600);
-                    break;
-                case 'testSuccess':
-                    showToast('success', message.message);
-                    setStatusBar('success', message.message);
-                    setLoading('testBtn', false, 'Test Connection', TEST_SVG);
-                    updateStatusDisplay('connected');
-                    break;
-                case 'testing':
-                    showToast('info', message.message);
-                    setStatusBar('info', message.message);
-                    break;
+        case 'error':
+            showToast('error', message.message);
+            setStatusBar('error', message.message);
+            setTestLoading(false);
+            setLoading('saveBtn', false, 'Save');
+            var projHint = byId('projectHint');
+            if (projHint && projHint.textContent === 'Loading projects...') {
+                projHint.textContent = 'Could not load projects. Leave blank to search all.';
             }
-        });
+            break;
+        case 'success':
+            showToast('success', message.message);
+            setStatusBar('success', message.message);
+            currentConfig.username = value('username');
+            currentConfig.hasPassword = true;
+            currentConfig.codeMode = pillChecked('codeMode');
+            setLoading('saveBtn', false, 'Save');
+            setTimeout(function() { vscode.postMessage({ type: 'silentTestConnection' }); }, 600);
+            break;
+        case 'testSuccess':
+            showToast('success', message.message);
+            setStatusBar('success', message.message);
+            setTestLoading(false);
+            var okHint = byId('opengrokTestResult');
+            if (okHint) {
+                okHint.textContent = 'Connected';
+                okHint.className = 'field-hint success';
+            }
+            fetchProjects();
+            break;
+        case 'testing':
+            showToast('info', message.message);
+            setStatusBar('info', message.message);
+            break;
+        case 'projectsList':
+            populateProjectList(message.projects || []);
+            break;
+    }
+});
 
-        document.getElementById('testBtn').addEventListener('click', testConnection);
-        document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
+document.querySelectorAll('.nav-button').forEach(function(button) {
+    button.addEventListener('click', function() {
+        activateSection(button.getAttribute('data-section'));
+    });
+});
 
-        vscode.postMessage({ type: 'getConfig' });
+document.querySelectorAll('input[name="codeMode"]').forEach(function(radio) {
+    radio.addEventListener('change', updatePillStates);
+});
+
+byId('enableSampling').addEventListener('change', updateConditionalRows);
+byId('enableObservationMasker').addEventListener('change', updateConditionalRows);
+
+byId('testOpengrokBtn').addEventListener('click', testConnection);
+byId('saveBtn').addEventListener('click', saveConfiguration);
+
+byId('password').addEventListener('blur', function() {
+    if (rawValue('password') || (currentConfig && currentConfig.hasPassword)) {
+        fetchProjects();
+    }
+});
+
+vscode.postMessage({ type: 'getConfig' });
     </script>
 </body>
 </html>

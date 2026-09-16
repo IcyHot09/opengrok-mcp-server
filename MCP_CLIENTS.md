@@ -1,70 +1,79 @@
-# Using OpenGrok MCP with Any Client
+# MCP Client Setup
 
-This guide covers how to connect the standalone OpenGrok MCP server to popular AI clients.
-The interactive setup wizard (v7.0+) is the recommended approach — it handles credentials
-securely via the OS keychain and writes the correct config for your client automatically.
-
-> **VS Code / Google Antigravity users:** install the VSIX extension instead.
-> It handles everything automatically. See [README.md](README.md).
+Connect OpenGrok MCP Server to any AI coding client that supports the [Model Context Protocol](https://modelcontextprotocol.io).
 
 ---
 
-## OpenGrok Memory Bank vs VS Code Memory
+## Setup
 
-| Capability | VS Code Built-in Memory (`/memory`) | OpenGrok Memory Bank |
-|-----------|-------------------------------------|---------------------|
-| Scope | General codebase knowledge | Investigation-specific state |
-| Files | Managed by VS Code | `active-task.md`, `investigation-log.md` |
-| Auto-loaded | ✅ Every Copilot session | ❌ Requires `opengrok_memory_status` call |
-| Token cost | Free (injected by VS Code) | Counts as tool calls |
-| Best for | Architecture, conventions, directories | Bug investigations, multi-session research |
+**VS Code / Google Antigravity** → Install the VSIX extension. Done — no manual config needed. See [README.md](README.md).
 
-**Rule of thumb:** Use VS Code `/memory` for "what is this codebase". Use OpenGrok memory for "what am I currently investigating".
-
-For non-VS Code clients:
-- **Claude Code:** Put general context in `.claude.md` at project root
-- **Cursor:** Put conventions in `.cursorrules`
-- **Standalone CLI:** OpenGrok memory bank at `~/.config/opengrok-mcp/memory-bank/`
-
----
-
-## Quick Start
-
-### Interactive Setup Wizard (Recommended, v7.0+)
-
-Run the guided wizard — it configures your MCP client and stores credentials securely:
+**Any other MCP client** → Install and run the wizard:
 
 ```sh
 npx opengrok-mcp-server setup
 ```
 
-Supports **Claude Code CLI**, **GitHub Copilot CLI**, and **Codex CLI**. VS Code is configured automatically by the VS Code extension — no CLI step needed. The wizard:
-- Prompts for your OpenGrok URL, username, and password
-- Tests the connection
-- Writes the correct MCP config file for the detected client
-- Stores credentials in the OS keychain (`@napi-rs/keyring`) with an AES-256-GCM encrypted
-  file fallback for headless/CI environments
+The wizard prompts for your OpenGrok URL, username, and password, tests the connection, and writes the config file for your detected client automatically. Credentials are stored in the OS keychain (`@napi-rs/keyring`) with an AES-256-GCM encrypted file fallback for headless/CI environments. Your password is **never** stored in any MCP client config file.
 
-Your password is **never** stored in any MCP client config file.
-
-Check installation health at any time:
+Verify anytime:
 
 ```sh
 opengrok-mcp status
+```
+
+Non-interactive checks and scripted updates (CI, dotfiles, containers):
+
+```sh
+opengrok-mcp setup --test                      # test the stored connection, no prompts
+opengrok-mcp setup --set contextBudget=generous  # update one stored setting
+opengrok-mcp help                              # all commands
 ```
 
 > **Note:** `status` reads your stored config automatically — it checks `~/.claude.json` (Claude Code), `~/.copilot/mcp-config.json` (GitHub Copilot CLI), and `~/.config/codex/config.toml` (Codex) in that order. No need to set `OPENGROK_BASE_URL` in your shell; it works right after `setup`.
 
 ---
 
+## Config Format
+
+The wizard writes this JSON structure to your MCP client's config file:
+
+```json
+{
+  "mcpServers": {
+    "opengrok": {
+      "command": "npx",
+      "args": ["opengrok-mcp-server"],
+      "env": {
+        "OPENGROK_BASE_URL": "https://opengrok.example.com/source/"
+      }
+    }
+  }
+}
+```
+
+Credentials are read from the OS keychain automatically on startup — no env vars needed.
+
+If you customize settings during setup (e.g., SSL verification, Code Mode, default project), those are added to the `env` block as well. Only non-default values are written. For a global install (`npm install -g opengrok-mcp-server`), replace `npx opengrok-mcp-server` with just `opengrok-mcp`.
+
+> **Note:** Some clients use slightly different key names (`"servers"` instead of `"mcpServers"`, or TOML format). The wizard handles these differences automatically.
+
+---
+
 ## Client Configurations
 
-After running the wizard, your client config is written automatically. The examples below
-show the canonical config format for each client if you need to set it up manually.
-
-All configs use `npx opengrok-mcp-server` as the command — no global install required.
-For a global install (`npm install -g opengrok-mcp-server`), replace `npx opengrok-mcp-server`
-with just `opengrok-mcp`.
+| Client | Config file | Notes |
+| ------ | ----------- | ----- |
+| Claude Code | `.mcp.json` (project) or `~/.claude.json` (user) | Wizard detects automatically |
+| VS Code (Copilot Chat) | VSIX extension (automatic) or `mcp.json` | Manual path below |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` | Wizard detects `copilot` binary |
+| Codex CLI | `~/.config/codex/config.toml` (TOML) | Wizard detects automatically |
+| Cursor | `.cursor/mcp.json` or Settings → Features → MCP | Manual JSON below |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` | Manual JSON below |
+| Claude Desktop | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`; Windows: `%APPDATA%\Claude\claude_desktop_config.json` | Restart after saving |
+| OpenCode | `opencode.json` (project) or `~/.config/opencode/opencode.json` (global) | `"type": "local"` |
+| Crush | `~/.config/crush/config.yaml` or project `crush.yaml` | YAML format below |
+| Google Antigravity | VSIX extension (recommended) or MCP Store raw config | Needs `npx` in workspace |
 
 ### Claude Code
 
@@ -85,17 +94,11 @@ Scope options:
 }
 ```
 
-Credentials are read from the OS keychain automatically on startup — no env vars needed.
-
----
-
 ### VS Code (GitHub Copilot Chat)
 
-> **Recommended:** Install the VSIX extension — it configures VS Code automatically.
-> No CLI setup needed.
+> **Recommended:** Install the VSIX extension — it configures VS Code automatically. No CLI setup needed.
 
-If you prefer manual config, create `~/.config/Code/User/mcp.json` (Linux/macOS) or
-`%APPDATA%\Code\User\mcp.json` (Windows):
+Manual config in `~/.config/Code/User/mcp.json` (Linux/macOS) or `%APPDATA%\Code\User\mcp.json` (Windows):
 
 ```json
 {
@@ -112,20 +115,9 @@ If you prefer manual config, create `~/.config/Code/User/mcp.json` (Linux/macOS)
 }
 ```
 
----
-
 ### GitHub Copilot CLI
 
-Run the wizard:
-
-```sh
-npx opengrok-mcp-server setup
-```
-
-The wizard detects `copilot` binary or `~/.copilot/` directory and writes the config to
-`~/.copilot/mcp-config.json` automatically.
-
-Manual config in `~/.copilot/mcp-config.json`:
+Run the wizard (`npx opengrok-mcp-server setup`) — it detects the `copilot` binary or `~/.copilot/` directory and writes `~/.copilot/mcp-config.json` automatically.
 
 ```json
 {
@@ -142,7 +134,9 @@ Manual config in `~/.copilot/mcp-config.json`:
 }
 ```
 
----
+### Codex CLI
+
+Run the wizard — it writes the TOML config automatically. Manual equivalent follows the same `command` + `env` shape in TOML form.
 
 ### Cursor
 
@@ -159,8 +153,6 @@ Edit `.cursor/mcp.json` in your project root, or open **Cursor Settings → Feat
 }
 ```
 
----
-
 ### Windsurf
 
 Edit `~/.codeium/windsurf/mcp_config.json`.
@@ -176,14 +168,7 @@ Edit `~/.codeium/windsurf/mcp_config.json`.
 }
 ```
 
----
-
 ### Claude Desktop
-
-| OS | Config file |
-| :-- | :---------- |
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
 
 ```json
 {
@@ -197,8 +182,6 @@ Edit `~/.codeium/windsurf/mcp_config.json`.
 ```
 
 Restart Claude Desktop after saving.
-
----
 
 ### OpenCode (opencode.ai)
 
@@ -215,8 +198,6 @@ Config files: `opencode.json` / `opencode.jsonc` (project) or `~/.config/opencod
 }
 ```
 
----
-
 ### Crush
 
 Config: `~/.config/crush/config.yaml` or project-level `crush.yaml`.
@@ -230,14 +211,11 @@ mcp:
         - opengrok-mcp-server
 ```
 
----
-
 ### Google Antigravity
 
 **Recommended:** Install the VSIX extension — Gemini discovers tools automatically.
 
-**Manual MCP config** (if you prefer not to use the extension):
-Use the MCP Store in Antigravity → *View raw config* and add:
+**Manual MCP config** (if you prefer not to use the extension): use the MCP Store in Antigravity → *View raw config* and add:
 
 ```json
 {
@@ -250,14 +228,32 @@ Use the MCP Store in Antigravity → *View raw config* and add:
 }
 ```
 
-> Since Antigravity runs in the cloud, `npx` must be available in your workspace environment.
-> Consult the [Antigravity docs](https://antigravity.google/docs/mcp) for workspace-specific details.
+> Since Antigravity runs in the cloud, `npx` must be available in your workspace environment. Consult the [Antigravity docs](https://antigravity.google/docs/mcp) for workspace-specific details.
 
 ---
 
-## Advanced: CI / Service Accounts
+## OpenGrok Memory Bank vs VS Code Memory
 
-For CI pipelines, pass credentials via environment variables — the server reads them directly:
+| Capability | VS Code Built-in Memory (`/memory`) | OpenGrok Memory Bank |
+|-----------|-------------------------------------|---------------------|
+| Scope | General codebase knowledge | Investigation-specific state |
+| Files | Managed by VS Code | `active-task.md`, `investigation-log.md` |
+| Auto-loaded | ✅ Every Copilot session | ❌ Requires `opengrok_memory_status` call |
+| Token cost | Free (injected by VS Code) | Counts as tool calls |
+| Best for | Architecture, conventions, directories | Bug investigations, multi-session research |
+
+**Rule of thumb:** Use VS Code `/memory` for "what is this codebase". Use OpenGrok memory for "what am I currently investigating".
+
+For non-VS Code clients:
+- **Claude Code:** Put general context in `.claude.md` at project root
+- **Cursor:** Put conventions in `.cursorrules`
+- **Standalone CLI:** OpenGrok memory bank under the server config directory (`~/.config/opengrok-mcp/` unless `OPENGROK_MEMORY_BANK_DIR` is set)
+
+---
+
+## CI / Headless Environments
+
+Pass credentials as environment variables — they take precedence over keychain:
 
 ```sh
 export OPENGROK_BASE_URL="https://opengrok.example.com/source/"
@@ -266,9 +262,17 @@ export OPENGROK_PASSWORD="$SECRET_FROM_VAULT"   # injected by your CI secrets ma
 npx opengrok-mcp-server
 ```
 
-`OPENGROK_PASSWORD` in the environment takes precedence over any keychain entry.
+For file-mounted secrets (containers, orchestrators), point at a mounted secret file and tune the response budget for log-friendly output:
 
-Or in a client config (e.g., Claude Code `.mcp.json`):
+```sh
+export OPENGROK_BASE_URL="https://opengrok.example.com/source/"
+export OPENGROK_USERNAME="ci-bot"
+export OPENGROK_PASSWORD_FILE="/run/secrets/opengrok-password"
+export OPENGROK_MAX_RESPONSE_BYTES="16384"
+npx opengrok-mcp-server
+```
+
+Or include in your MCP client config:
 
 ```json
 {
@@ -290,6 +294,25 @@ Claude Code supports `${VAR}` expansion in `env` blocks — set the variable in 
 
 ---
 
+## Key Environment Variables
+
+| Variable | Required | Description |
+| :------- | :------- | :---------- |
+| `OPENGROK_BASE_URL` | Yes | OpenGrok server URL (e.g., `https://opengrok.example.com/source/`) |
+| `OPENGROK_USERNAME` | Yes | OpenGrok username |
+| `OPENGROK_PASSWORD` | No | Password — optional when stored in OS keychain via `opengrok-mcp setup` (overrides keychain) |
+| `OPENGROK_PASSWORD_FILE` | No | Path to a file containing the password (file-mounted secret) |
+| `OPENGROK_VERIFY_SSL` | No | `false` for self-signed certificates (default: `true`) |
+| `OPENGROK_CODE_MODE` | No | `true` = 2–5 Code Mode tools (api + execute, +3 memory tools when `OPENGROK_ENABLE_MEMORY_TOOLS=true`); `false` = 26 standard tools (default: `true`) |
+| `OPENGROK_CONTEXT_BUDGET` | No | `minimal` (8 KB) / `standard` (16 KB) / `generous` (32 KB) (default: `standard`) |
+| `OPENGROK_MAX_RESPONSE_BYTES` | No | Override the per-response byte cap |
+| `OPENGROK_DEFAULT_PROJECT` | No | Scope all searches to one project |
+| `OPENGROK_ENABLE_ELICITATION` | No | `false` to disable the interactive project picker and `env.opengrok.elicit()` (default: `true`) |
+
+Full reference: [README.md → Configuration](README.md#configuration).
+
+---
+
 ## Manual Setup (Advanced)
 
 > Use this if you need full control over the server binary and environment.
@@ -303,19 +326,7 @@ npm install -g opengrok-mcp-server   # global install
 # OR: use npx for one-off runs without installing
 ```
 
-### Key Environment Variables
-
-| Variable | Required | Description |
-| :------- | :------- | :---------- |
-| `OPENGROK_BASE_URL` | Yes | OpenGrok server URL (e.g., `https://opengrok.example.com/source/`) |
-| `OPENGROK_USERNAME` | Yes | OpenGrok username |
-| `OPENGROK_PASSWORD` | Yes | OpenGrok password (overrides keychain) |
-| `OPENGROK_VERIFY_SSL` | No | `false` for self-signed certificates (default: `true`) |
-| `OPENGROK_CODE_MODE` | No | `true` to enable Code Mode (5-tool sandbox interface) |
-| `OPENGROK_DEFAULT_PROJECT` | No | Default project to scope all searches |
-| `OPENGROK_ENABLE_ELICITATION` | No | `true` to enable interactive project picker and `env.opengrok.elicit()` |
-
-Full env var reference: see [README.md — Configuration Guide](README.md#configuration-guide).
+See [Key Environment Variables](#key-environment-variables) for the full variable list.
 
 ### Example: Claude Desktop with explicit env vars
 
@@ -338,49 +349,6 @@ Full env var reference: see [README.md — Configuration Guide](README.md#config
 
 ---
 
-## Troubleshooting
-
-### `No credentials found` on server start
-
-Run the setup wizard to store credentials in the OS keychain:
-
-```sh
-npx opengrok-mcp-server setup
-```
-
-Or pass `OPENGROK_PASSWORD` as an environment variable in your client config.
-
-### `command not found: opengrok-mcp`
-
-Use `npx opengrok-mcp-server` instead, or install globally:
-
-```sh
-npm install -g opengrok-mcp-server
-```
-
-### SSL certificate errors
-
-During `npx opengrok-mcp-server setup`, answer **No** when asked "Verify SSL certificates?".
-This configures `OPENGROK_VERIFY_SSL=false`. Or set it in your client config env block.
-
-### Connection test fails during setup
-
-1. Check VPN / network access to the OpenGrok server.
-2. Verify the base URL ends with `/source/`.
-3. Test manually: `curl -u username https://opengrok.example.com/source/api/v1/projects`
-
-### Checking server logs
-
-Add `"--verbose"` to the args or run the server directly in a terminal:
-
-```sh
-OPENGROK_BASE_URL=https://... OPENGROK_USERNAME=... OPENGROK_PASSWORD=... npx opengrok-mcp-server 2>&1 | less
-```
-
-MCP JSON-RPC traffic goes to stdout; server logs go to stderr.
-
----
-
 ## Prompt Caching
 
 Claude Code and Claude.ai automatically cache the MCP server's system prompt
@@ -391,3 +359,29 @@ Claude Code and Claude.ai automatically cache the MCP server's system prompt
 
 `OPENGROK_ENABLE_CACHE_HINTS=true` is reserved for future explicit cache-control headers
 (not yet implemented by any client).
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+| ------- | --- |
+| `No credentials found` | Run `npx opengrok-mcp-server setup` or set `OPENGROK_PASSWORD` in env |
+| `command not found: opengrok-mcp` | Use `npx opengrok-mcp-server` instead, or `npm install -g opengrok-mcp-server` |
+| SSL certificate errors | During setup answer **No** to "Verify SSL certificates?", or set `OPENGROK_VERIFY_SSL=false` |
+| Connection test fails | Check VPN access; verify the base URL; `curl -u username https://opengrok.example.com/source/api/v1/projects` |
+| Tools disappear after reload | Click tools icon → "Update Tools" → `Developer: Reload Window` |
+
+**Checking server logs:** add `"--verbose"` to the args, or run the server directly:
+
+```sh
+OPENGROK_BASE_URL=https://... OPENGROK_USERNAME=... OPENGROK_PASSWORD=... npx opengrok-mcp-server 2>&1 | less
+```
+
+MCP JSON-RPC traffic goes to stdout; server logs go to stderr.
+
+**Debug logs:** `OPENGROK_LOG_LEVEL=debug npx opengrok-mcp-server 2>&1 | less`
+
+### Client Tool Timeouts (Code Mode)
+
+`opengrok_execute` can legitimately run up to the 62 s sandbox hard timeout (large investigations over slow indexes). If your MCP client enforces its own per-tool timeout, a client-side timeout shorter than the server budget aborts the call while the server is still working — the client reports failure but the result is simply discarded. Set the client's tool timeout to **≥ 70 s** for Code Mode (62 s server budget + headroom), or break the investigation into smaller `opengrok_execute` calls.

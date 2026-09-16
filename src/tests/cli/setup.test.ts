@@ -35,6 +35,24 @@ vi.mock('../../server/cli/keychain.js', () => ({
   retrievePassword: vi.fn(() => null),
 }));
 
+// Wizard project discovery hits the network via OpenGrokClient — stub it out
+// so existing wizard tests stay fast and deterministic (empty list → free-text fallback).
+vi.mock('../../server/client/index.js', () => ({
+  OpenGrokClient: vi.fn().mockImplementation(() => ({
+    listProjects: vi.fn().mockResolvedValue([]),
+    close: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock('../../server/config.js', () => ({
+  loadConfig: vi.fn(() => ({
+    OPENGROK_BASE_URL: 'https://og.example.com/source/',
+    OPENGROK_USERNAME: '',
+    OPENGROK_PASSWORD: '',
+    OPENGROK_VERIFY_SSL: true,
+  })),
+}));
+
 vi.mock('child_process', () => ({
   spawnSync: vi.fn((_cmd: string, _args: string[]) => ({
     status: mocks.spawnSyncStatus,
@@ -469,5 +487,18 @@ describe('runSetup wizard — verifySsl prompt', () => {
     if (allCalls.length > 0) {
       expect(allCalls[0][0]).toMatchObject({ verifySsl: false });
     }
+  });
+
+  it('surfaces keychain verification warnings instead of success', async () => {
+    const { storeCredentials } = await import('../../server/cli/keychain.js');
+    vi.mocked(storeCredentials).mockReturnValue({
+      source: 'encrypted-file',
+      warning: 'keychain holds a stale copy',
+    });
+    const { runSetup } = await import('../../server/cli/setup/wizard.js');
+    await runSetup();
+    expect(clackMocks.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining('stale copy')
+    );
   });
 });

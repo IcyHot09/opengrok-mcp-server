@@ -16,7 +16,7 @@ import {
   parseFileHistory,
   parseWebSearchResults,
   parseFileSymbols,
-} from '../server/parsers.js';
+} from '../server/parsers/index.js';
 import {
   formatSearchResults,
   formatFileContent,
@@ -27,7 +27,7 @@ import {
   formatCompileInfo,
   formatFileSymbols,
   formatSymbolContext,
-} from '../server/formatters.js';
+} from '../server/formatters/index.js';
 import {
   _dispatchTool as dispatchTool,
   _buildLocalLayer as buildLocalLayer,
@@ -42,7 +42,7 @@ import {
 import {
   OpenGrokClient,
   _TTLCache as TTLCache,
-} from '../server/client.js';
+} from '../server/client/index.js';
 import type { Config } from '../server/config.js';
 import type {
   SearchResults,
@@ -802,8 +802,8 @@ describe('client.ts branch coverage', () => {
     const cache = new TTLCache<string, string>(10, 5, 60_000);
     // Set a value that's much larger than maxBytes
     cache.set('big', 'huge-value', 100);
-    // Should still set it (after evicting everything possible)
-    expect(cache.get('big')).toBe('huge-value');
+    // Oversized entries are rejected to protect the byte budget
+    expect(cache.get('big')).toBeUndefined();
   });
 });
 

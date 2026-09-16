@@ -9,7 +9,7 @@ import {
 } from '../server/server.js';
 import type { CompileInfo } from '../server/local/compile-info.js';
 import type { Config } from '../server/config.js';
-import { logger } from '../server/logger.js';
+import { logger } from '../server/utils/logger.js';
 
 // ---------------------------------------------------------------------------
 // capResponse

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'os';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -79,6 +79,137 @@ describe('keychain store/retrieve via keyring', () => {
     // retrievePassword returns null (keyring miss + no file)
     const result = await retrievePassword('admin2');
     expect(result).toBeNull();
+  });
+});
+
+describe('keychain half-written shadow + write gate', () => {
+  // Production keychain access uses require() (optional native module), which
+  // vi.mock cannot intercept — inject a deterministic fake backend instead.
+  interface FakeOpts { writeThenThrow?: boolean; stickyDelete?: boolean; throwAll?: boolean }
+  function makeFakeKeyring(opts: FakeOpts = {}) {
+    const store = new Map<string, string>();
+    let setCalls = 0;
+    return {
+      setCalls: () => setCalls,
+      entry: (username: string) => ({
+        setPassword: (pw: string) => {
+          if (opts.throwAll) throw new Error('no keyring');
+          setCalls++;
+          store.set(username, pw);
+          if (opts.writeThenThrow) throw new Error('keyring write half-failed');
+        },
+        getPassword: (): string | null => {
+          if (opts.throwAll) throw new Error('no keyring');
+          return store.get(username) ?? null;
+        },
+        deletePassword: (): void => {
+          if (opts.throwAll) throw new Error('no keyring');
+          if (!opts.stickyDelete) store.delete(username);
+        },
+      }),
+    };
+  }
+
+  const gateFiles = (): string[] => {
+    const fs = require('fs') as typeof import('fs');
+    const path = require('path') as typeof import('path');
+    return fs.readdirSync(os.tmpdir())
+      .filter((n: string) => n.startsWith('.keyring-writes-disabled-'))
+      .map((n: string) => path.join(os.tmpdir(), n));
+  };
+
+  beforeEach(() => {
+    for (const f of gateFiles()) {
+      try {
+        (require('fs') as typeof import('fs')).unlinkSync(f);
+      } catch { /* ignore */ }
+    }
+  });
+
+  afterEach(async () => {
+    const { _setKeyringEntryForTests } = await import('../../server/cli/keychain.js');
+    _setKeyringEntryForTests(null);
+  });
+
+  it('verified write returns keychain source with no warning', async () => {
+    const fake = makeFakeKeyring();
+    const { storeCredentials, retrievePassword, _setKeyringEntryForTests } = await import('../../server/cli/keychain.js');
+    _setKeyringEntryForTests((u) => fake.entry(u));
+    const uniqueUser = 'verifytest-' + Date.now();
+    const stored = await storeCredentials('https://og.example.com', uniqueUser, 'pw');
+    expect(stored).toEqual({ source: 'keychain' });
+    expect(await retrievePassword(uniqueUser)).toBe('pw');
+    expect(fake.setCalls()).toBe(1);
+  });
+
+  it('half-written shadow: file fallback + mismatch warning, reads serve the keychain copy', async () => {
+    // Backend persists the value but reports failure, and deletes are wedged.
+    const fake = makeFakeKeyring({ writeThenThrow: true, stickyDelete: true });
+    const { storeCredentials, retrievePassword, deleteCredentials, _setKeyringEntryForTests } = await import('../../server/cli/keychain.js');
+    _setKeyringEntryForTests((u) => fake.entry(u));
+    const uniqueUser = 'shadowtest-' + Date.now();
+    try {
+      const stored = await storeCredentials('https://og.example.com', uniqueUser, 'new-secret');
+      expect(stored.source).toBe('encrypted-file');
+      expect(stored.warning).toMatch(/keychain/);
+      // Reads are never gated — the lingering shadow copy keeps serving.
+      expect(await retrievePassword(uniqueUser)).toBe('new-secret');
+      // A 7-day write gate now suppresses further keyring attempts.
+      expect(gateFiles().length).toBeGreaterThan(0);
+      const gated = await storeCredentials('https://og.example.com', uniqueUser, 'new-secret-2');
+      expect(gated.source).toBe('encrypted-file');
+      expect(gated.warning).toBeUndefined();
+      expect(fake.setCalls()).toBe(1); // gate suppressed the second attempt
+    } finally {
+      await deleteCredentials(uniqueUser);
+    }
+  });
+
+  it('verified keyring write clears a stale gate', async () => {    const fs = await import('fs');
+    const path = await import('path');
+    const crypto = await import('crypto');
+    const fake = makeFakeKeyring();
+    const { storeCredentials, _setKeyringEntryForTests } = await import('../../server/cli/keychain.js');
+    _setKeyringEntryForTests((u) => fake.entry(u));
+    const uniqueUser = 'gatetest-' + Date.now();
+    const gateName = `.keyring-writes-disabled-${crypto.createHash('sha256').update(uniqueUser).digest('hex').slice(0, 32)}`;
+    fs.writeFileSync(path.join(os.tmpdir(), gateName), JSON.stringify({ disabledAt: new Date().toISOString() }), 'utf8');
+    try {
+      // Gate is fresh → keyring untouched, file fallback without warning.
+      const gated = await storeCredentials('https://og.example.com', uniqueUser, 'pw1');
+      expect(gated.source).toBe('encrypted-file');
+      expect(fake.setCalls()).toBe(0);
+      // Expire the gate → next store verifies against the keyring and clears it.
+      fs.writeFileSync(
+        path.join(os.tmpdir(), gateName),
+        JSON.stringify({ disabledAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString() }),
+        'utf8'
+      );
+      const stored = await storeCredentials('https://og.example.com', uniqueUser, 'pw1');
+      expect(stored.source).toBe('keychain');
+      expect(fs.existsSync(path.join(os.tmpdir(), gateName))).toBe(false);
+    } finally {
+      const { deleteCredentials } = await import('../../server/cli/keychain.js');
+      await deleteCredentials(uniqueUser);
+      try { fs.unlinkSync(path.join(os.tmpdir(), gateName)); } catch { /* ignore */ }
+    }
+  });
+
+  it('credential file writes are atomic and deletions remove all copies', async () => {
+    const fake = makeFakeKeyring({ throwAll: true });
+    const { storeCredentials, retrievePassword, deleteCredentials, _setKeyringEntryForTests } = await import('../../server/cli/keychain.js');
+    _setKeyringEntryForTests((u) => fake.entry(u));
+    const uniqueUser = 'atomictest-' + Date.now();
+    const fs = await import('fs');
+    const tmpLeftovers = (): string[] =>
+      fs.readdirSync(os.tmpdir()).filter((n: string) => n.includes('cred-') && n.endsWith('.tmp'));
+    await storeCredentials('https://og.example.com', uniqueUser, 'pw');
+    expect(await retrievePassword(uniqueUser)).toBe('pw');
+    // Atomic temp+rename must not leave temp files behind.
+    expect(tmpLeftovers()).toEqual([]);
+    await deleteCredentials(uniqueUser);
+    expect(await retrievePassword(uniqueUser)).toBeNull();
+    expect(tmpLeftovers()).toEqual([]);
   });
 });
 

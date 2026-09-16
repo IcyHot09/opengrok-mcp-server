@@ -10,6 +10,7 @@ out/
 # VS Code Extension packaging
 *.vsix
 *.tar.gz
+*.tgz
 *.zip
 .vscode-test/
 
@@ -51,3 +52,6 @@ specs/
 
 # Local OpenGrok tool state
 .opengrok/
+
+# Tree-sitter WASM grammars (binary, copied from node_modules)
+grammars/

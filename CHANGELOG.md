@@ -7,59 +7,215 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## Highlights
+## [9.6.0] - 2026-09-16
 
-### 💬 v9.0 — Code Mode Interactive Prompts & LLM Sampling
+### 🔧 Changed — Code Mode defaults consistency
 
-`env.opengrok.elicit()` and `env.opengrok.sample()` bring interactive user prompts and AI-powered query reformulation directly into the Code Mode sandbox. Zero-result searches auto-inject `_suggestions` when sampling is available. `opengrok_api` gains a session-start project picker. `elicitOrFallback` migrated from deprecated `Server` to `McpServer`. **1,115 tests, ≥89% coverage.**
+- **Memory tools default off** — `OPENGROK_ENABLE_MEMORY_TOOLS` now defaults
+  to `false`: Code Mode exposes 2 tools (`opengrok_api` + `opengrok_execute`)
+  unless explicitly enabled (`=true` for the full 5-tool set). Applies
+  consistently across `config.ts`, `package.json`, `settings-catalog.json`,
+  `server.json`, the VS Code extension, CLI wizard/TUI, and `setup --set`.
+- **Elicitation default on** — `OPENGROK_ENABLE_ELICITATION` now defaults to
+  `true` on the same surfaces.
+- **Boolean parsing hardened** — `OPENGROK_ENABLE_FILES_API` and
+  `OPENGROK_ENABLE_OBSERVATION_MASKER` used `z.coerce.boolean()`, which mapped
+  the string `"false"` to `true`. All feature flags now share one
+  `true-only` string parsing (memory/elicitation/sampling/files-API/
+  observation-masker/code-mode), so explicit `=false` always disables.
+- Generic invariants kept: `verifySsl=true`, blank `baseUrl`.
 
-- 🛡️ **v9.2** — Security Hardening, SDK 1.29.0, Enterprise Reliability & Memory UX
+### 🛡️ Fixed — Credential hygiene follow-ups
 
-MCP SDK 1.29.0 with `registerResource()` API, 3 new modules (unified redaction, sandbox protocol, per-tool rate limiting), comprehensive security hardening (async audit, stable credential keys, SSRF downgrade prevention, sandbox allowlist), auto response format selection (~50% token savings on search), and 15+ bug fixes. v9.2.7: memory bank read/write instructions for all AI clients, observation masker defaulted off with configurable full-text window, setup wizard pre-fill from stored config. v9.2.8: defs/refs search reliability — REST-first with project fallback, descriptive errors, fail-fast web UI retry, `batchSearch` per-query resilience. v9.2.10: `OPENGROK_ENABLE_SAMPLING` kill switch — sampling now off by default to prevent consuming premium requests in GitHub Copilot; surfaced in VS Code settings, config panel, and CLI wizard; wizard `defaultValue`→`initialValue` bug fix for validated fields. v9.2.11: full config surface audit — removed dead `OPENGROK_ENABLE_CACHE_HINTS`, surfaced `OPENGROK_TIMEOUT` and `OPENGROK_DEFAULT_MAX_RESULTS` in all UIs, added 5 missing env vars to `server.json`. **1,126 tests, ≥89% coverage.**
+- **Tool calls failed with `fetch failed` while Test Connection passed** —
+  the client passed an undici v8 `Agent` as dispatcher to the Node.js global
+  `fetch` (older bundled undici), which rejects foreign dispatchers. The
+  client now calls `fetch` from its own undici package. VS Code Test
+  Connection was unaffected (it uses raw `node:https`). Added
+  `client-live-dispatcher` integration tests (real loopback server, no mocks)
+  plus migration of client suites to mock undici's `fetch`.
 
-- 🎨 **v9.1** — Five env-only settings surfaced in all UI surfaces (WebView, CLI wizard, VS Code Settings): Files API Cache, AI Sampling Model, AI Sampling Token Budget, Audit Log File, Request Rate Limit. Context budget default corrected (`minimal`→`standard`). Quick Configure command removed. `opengrok_api` and `opengrok_read_memory` no longer budget-capped (static/managed content must not be truncated). **1,078 tests.**
+- **Setup accepts schemeless URLs** — typing `host.example.com` (no scheme)
+  in `setup` silently ignored Enter. Both the TUI and fallback wizard now
+  assume `https://`, show the assumed URL, and explain invalid input instead
+  of stalling.
 
-### 🔑 v8.0 — Security Hardening & OS Keychain Integration
+- **Atomic credential writes** — keychain gate files, encrypted credential
+  files, and rotation timestamps are written temp+rename so a crash mid-write
+  never leaves torn files.
+- **Secure deletion** — credential files are overwritten with random bytes
+  before unlink on delete/purge (best-effort; journaling filesystems and SSD
+  wear-levelling may preserve copies).
+- **Token redaction** — raw API tokens (`glpat-`/`gldt-`/`glrt-`/`gloas-`/
+  `glft-`) are redacted from logs and error messages; URL-credential
+  redaction is now authority-scoped so OpenGrok `@revision` URLs no longer
+  false-positive.
+- **Warning surfacing** — the setup wizard shows the keychain verification
+  warning instead of a success message when the encrypted-file fallback wins.
+- **No-clobber background sync** — the VS Code once-per-session sync preserves
+  a differing keychain password (with a convergence warning) instead of
+  overwriting a fresher CLI-saved value; explicit saves still win. The
+  headless encrypted-file fallback now uses the portable key (no hostname)
+  so reads succeed without legacy-key migration.
+- **Flat sandbox globals** — the generated API spec documented bare `search()`
+  calls while the worker only exposed `env.opengrok.*`, so spec-following code
+  threw `ReferenceError`. The worker now destructures all 21 methods as flat
+  globals (flat-globals pattern); both forms bridge identically. Server
+  instructions, tool descriptions, skills, and contributor docs teach both.
+- **RBAC role fix** — `ROLE_PERMISSIONS` referenced nonexistent tools
+  (`opengrok_search`, `opengrok_get_symbol_info`) and omitted real ones, so
+  developer/readonly roles wrongly 403'd legitimate tools. Both lists now
+  match the 31 registered tools (readonly: single-shot reads only — no
+  execute, memory writes, or fan-out tools).
+- **Memory tools toggle** — new `OPENGROK_ENABLE_MEMORY_TOOLS` setting (default
+  on) to turn the 3 Code Mode memory tools off for an api + execute only
+  setup. Surfaced in VS Code Settings, the config panel, CLI wizard/TUI,
+  `setup --set`, and `server.json`; the API spec, instructions, and sandbox
+  bridge all honor it.
+- **CLI gaps** — `setup --test` (non-interactive connection check),
+  `setup --set key=value` (scripted single-setting updates across configured
+  clients; passwords refused), `help`/`version` subcommands (previously an
+  unknown command fell through and booted the server), unknown-command
+  suggestions, and a project picker in setup/webview backed by live project
+  discovery. No `update` command:
+  updates ship via `npm update -g opengrok-mcp-server` and the extension's
+  GitHub release check.
+- **Extension + CLI structure** — credential sync extracted to a tested
+  `src/extension/credentials.ts` (no-clobber background sync, explicit saves
+  win); the configure panel now opens automatically when the MCP server
+  cannot start for lack of credentials; CLI gained side-effect-free
+  `commands.ts` routing, a lazy `keyring-loader.ts`, a pure box-drawing
+  `status-view.ts` renderer, and shared `html-parsers.ts` project discovery.
+- **Webview redesign** — configuration panel rebuilt on a sidebar design
+  system (General / Features / Network / Advanced): Code Mode pill toggle,
+  custom project picker with live discovery, conditional rows, per-section
+  hints, and toast notifications.
+- **New standard tools** — six standard tools
+  (`opengrok_get_all_matches`, `opengrok_get_file_history_with_files`,
+  `opengrok_get_download_url`, `opengrok_list_groups`,
+  `opengrok_get_suggest_popularity`, `opengrok_get_project_repositories`)
+  with `formatMoreResults`/`formatRssHistory`, RBAC allowlist, and tool docs;
+  `opengrok_index_health` now reports `serverVersion` + `suggestConfig`;
+  `tryLocalRead` skips files > 16 MB; sandbox `getFileAnnotate`
+  (`revision`/`startLine`/`endLine`/`includeContent`, OOB errors),
+  `getFileOverview` (`includeImports`), `getFileDiff` (`includeHunks`,
+  default true), `listProjects(filter?)`, `searchSuggest` (`context`),
+  `getGuidanceForPath` (AGENTS.md/CLAUDE.md discovery), and
+  `getSymbolContext` refinements (ref fetch floor, dead-zone escape,
+  two-pass sampling, context clamp, header stem-fallback, tree-sitter
+  expansion); CLI unknown commands suggest the closest match instead of
+   booting the server. Standard mode grows 20 → 26 tools (31 total).
 
-Extension writes credentials to the OS keychain instead of temp files, eliminating env-var credential exposure. Server reads the keychain on startup with an encrypted file fallback for headless Linux. `verifySsl` default corrected to `true`. Memory tools moved to Code Mode only. Wrapper scripts and tarball distribution removed — npm/npx and VSIX only. **1,079 tests, ≥89% coverage.**
+### 🚀 Code Mode sandbox, code intelligence, pagination, budgets, config
 
-### 🛡️ v7.0 — Security Audit, OAuth Resource Server & CLI Setup Wizard
+Adds the Code Mode sandbox, code intelligence, pagination, budgets, and
+unified config surface — documented in the new `AGENTS.md` (with `CLAUDE.md`
+as a shim), refreshed skills, corrected evaluation items, and extended
+`server.json` / packaging metadata. `verifySsl` stays `true` and all settings
+keep the `OPENGROK_` prefix and `env.opengrok.*` naming.
 
-Comprehensive security audit across all attack surfaces: SSRF hardening, Unicode path traversal, HTML/prompt injection, timing-safe token comparison, AES-256-GCM credential encryption, integer rate limiter, and CORS allowlist. OAuth 2.1 migrated to resource server model (bring your own IdP). New `npx opengrok-mcp setup` interactive wizard for Claude Code CLI, VS Code/Copilot CLI, and Codex CLI. **1079 tests, ≥89% coverage.**
+### ⚠️ Behavior changes
 
-### 🚀 v6.0 — Enterprise MCP: HTTP Transport, OAuth 2.1 & RBAC
+- **CORS loopback gating** — with auth configured (`OPENGROK_HTTP_AUTH_TOKEN`
+  or RBAC tokens), loopback origins are no longer implicitly trusted; add them
+  to `OPENGROK_ALLOWED_ORIGINS` explicitly.
+- **RBAC hardening (intentional)** — unknown tool names are denied
+  fail-closed, and JSON-RPC batch requests are checked per item (a denied
+  entry rejects the batch).
+- **`fileType` strict allowlist** — unknown values now throw listing the
+  canonical analyzer names (`makefile` maps to `sh`; `cobol`, `ocaml`,
+  `mandoc`, `troff` added).
+- **Stricter input validation** — malformed tool inputs (bad `sort`, `file`
+  without a project, `end_line < start_line`, oversized batches) now throw
+  descriptive errors instead of silently degrading.
+- **Lucene 400 retries** — queries rejected by the Lucene parser are retried
+  escaped, then phrase-quoted for `--` prefixes, before surfacing the error.
+- **Scale-ups** — 62 s sandbox/HTTP-search timeout, 8 MB bridge buffer,
+  `opengrok_execute` 15 rpm default, and 8/16/32 KB response budget tiers.
 
-Streamable HTTP transport for team deployments, OAuth 2.1 with `client_credentials` grant, role-based access control (admin/developer/readonly), OpenGrok API v2 support, and full MCP 2025-06-18 spec compliance: structured tool output (`outputSchema` + `structuredContent`), MCP Resources, Prompts, Elicitation, and Sampling. **26 tools total, 919 tests.**
+### ✨ Added
 
-- 🔧 **v6.2** — 4 bug fixes: sync-first `opengrok_execute` (halves Code Mode tool calls), sandbox `getFileDiff` wire-up, delta/compressed memory reads, API_SPEC example alignment. TOON format support (~40% fewer tokens than JSON for search results).
-- 🔍 **v6.1** — `opengrok_get_file_diff` (tool 26): unified diff with context lines via `?format=u` HTML parsing; Code Mode `return_rules` micro-optimizations; typed `CodeModeAnnotations` for interleaved thinking.
+- **Sandbox hardening** — 8 MB SharedArrayBuffer data region
+  (`DATA_REGION_BYTES`), 62 s hard timeout, `Atomics.waitAsync` idle loop (no
+  busy-poll), `fitToBuffer()` overflow guard that never silently changes return
+  types, per-query `batchSearch` stubs for dropped queries, and an explicit
+  `SANDBOX_ALLOWED_METHODS` allowlist enforced on every bridge call.
+- **Tree-sitter code intelligence** — `web-tree-sitter` WASM runtime with a
+  100+ language grammar map bundled to `out/grammars/` (override via
+  `OPENGROK_GRAMMAR_DIR`); `expandToFunctionBoundary()` powers
+  `expandFunction` in `search()` / `batchSearch()` / `getFileContent()`;
+  callee extraction makes `traceCallChain()` `callees`/`both` directions return
+  real results for supported languages.
+- **Cursor pagination** — Opaque `encodeCursor()` / `decodeCursor()` codec
+  shared by `search`, `findFile`, history, browse, symbols, and diff;
+  cross-method cursor reuse is rejected and expired cursors return the
+  `_cursorExpired` contract (reissue without cursor).
+- **Schema-driven sandbox API** — `sandbox-schemas/` `MethodSchema` modules
+  plus the declaration generator engine (`npm run generate:spec`; never edit
+  generated output manually); `elicit()` / `sample()` / `_suggestions`
+  zero-result handling documented with null-guard and cancel patterns.
+- **Config surface** — `server.json` gains `OPENGROK_PER_TOOL_RATELIMIT` and
+  `OPENGROK_SEARCH_AND_READ_CAP`; the five file/secret/cap/security vars
+  (`OPENGROK_PASSWORD_FILE`, `OPENGROK_MAX_RESPONSE_BYTES`,
+  `OPENGROK_STRICT_SSRF`, `OPENGROK_JWT_ISSUER`, `OPENGROK_GRAMMAR_DIR`) are
+  verified present with generic descriptions. Budgets documented as three
+  tiers: `minimal` 8 KB (~2K tokens) / `standard` 16 KB (~4K, default) /
+  `generous` 32 KB (~8K).
+- **Docs & skills** — New `AGENTS.md` (module tables for
+  transport/tools/protocol/utils/client/parsers/formatters/sandbox/memory/
+  pagination/intelligence, 10-step adding-a-tool guide, Zod-4 / undici-only /
+  `buildSafeUrl` / `assertSafePath` / 8 MB / 62 s / 8-16-32 KB constraints);
+  skills refreshed (canonical `fileType` analyzer names + aliases,
+  `batchSearch` max 10 queries, cursor pagination, `expandFunction`,
+  `traceCallChain` callees support, memory-bank 4 KB / 32 KB limits, full
+  `response_format` list); evaluation Q17–Q19 `expected_tools` corrected to
+  match their prompts.
+- **Packaging** — `out/grammars/` added to npm `files[]`; `grammars/` source
+  staging dir excluded from the VSIX (runtime loads from `out/grammars/`).
+- **Dependencies** — `undici` 7→8.10 (security fixes), MCP SDK 1.29→1.30
+  (stays on v1), `@toon-format/toon` 2→4, `p-retry` 7→8,
+  `node-html-parser` 6→9, `js-yaml` 4→5 (named `dump` import,
+  `quotingType`→`quoteStyle` codemod), quickjs/keyring/jose minors,
+  `memfs` 4.55.0 pin for Windows installs.
+- **UI surfaces** — Five new settings in VS Code settings, config webview
+  (Advanced), CLI wizard, and `server.json`: `passwordFile`,
+  `maxResponseBytes`, `strictSsrf`, `jwtIssuer`, `grammarDir`
+  (`OPENGROK_PASSWORD_FILE`, `OPENGROK_MAX_RESPONSE_BYTES`,
+  `OPENGROK_STRICT_SSRF`, `OPENGROK_JWT_ISSUER`, `OPENGROK_GRAMMAR_DIR`).
+- **Docs** — New `ENGINEERING.md` (15-section deep dive: sandbox, pool,
+  client, Code Mode API, intelligence, memory, transport, rate limits,
+  elicitation/sampling, audit, credentials, CLI, tree-sitter, async cache)
+  and `SECURITY.md` (threat model); new generic `.env.template`.
+- **Worker hardening** — Silent console (no MCP stream corruption), 62 s
+  per-call bridge deadline, response-length protocol guards, pooled-heap
+  corruption fix (no QuickJS wall-clock interrupt mid-bridge), worker-pool
+  liveness (`unref`, dead-handle skip, drain race fix).
+- **Client hardening** — Lucene-failure retries, per-attempt deadlines,
+  16 MB response cap, redirect SSRF checks, clock-jump-proof rate limiter,
+  LRU cache promotion, `symbol` search type, `pathFilter` /
+  `maxHitsPerFile` / `sort` options, single-result redirect handling,
+  background client for fan-out intelligence calls.
 
-### 🧬 v5.0 — Code Mode: Pure-WASM Sandbox + Token Optimization
+### 🐛 Fixed
 
-Code Mode sandbox built on `@sebastianwessel/quickjs` — pure JS + WASM, zero native compilation, no `node-gyp`, works everywhere including `npx` and enterprise Linux. Full token optimization suite: three context budget tiers, compact TSV/YAML/text formats, Living Document memory bank, and session observation masker for long investigations.
+- `fileType` validation uses canonical analyzer names (`cxx`, `golang`, `sh`,
+  …) with alias normalization (`cpp`→`cxx`, `go`→`golang`, `bash`→`sh`, …)
+  instead of file extensions.
+- `batchSearch()` per-query failures return `{ totalCount: 0, results: [],
+  _error }` instead of throwing, so one bad query no longer fails the batch.
+- `batchSearch()` pagination correctly documented as unsupported (always offset
+  0) — use `search()` with `cursor` / `startIndex` for paging.
+- `getFileDiff()` with identical revisions returns empty hunks with a hint
+  instead of an error.
+- `search()` `file` filter routes to all-matches-in-file with its own project
+  resolution (cursor rejected for this path, no pagination).
 
-- 🔬 **v5.6** — MCP SDK 1.28.0, `outputSchema` + `structuredContent` on 10 tools, MCP Resources/Prompts/Elicitation/Sampling, `opengrok_blame`, per-tool rate limiting, structured audit logging, sandbox sanitization.
-- ⚡ **v5.5** — Sandbox worker pool, 4 new tools (`opengrok_what_changed`, `opengrok_dependency_map`, `opengrok_search_pattern`, enhanced `opengrok_index_health`), C++ specialized skill (489 lines), TSV batch format.
-- 🗃️ **v5.4** — 2-file memory bank (active-task.md + investigation-log.md), rewritten SERVER_INSTRUCTIONS, `opengrok_memory_status` tool, compact Code Mode descriptions, new session/investigation skills.
-- 🐛 **v5.3.2** — P0 bug fixes: activation events, ObservationMasker injection layer, SERVER_INSTRUCTIONS dead references, UI polish.
+### 🛡️ Security
 
-### 🏗️ v4.0 — Modern MCP SDK & Breaking Tool Rename
-
-McpServer high-level API, `opengrok_` prefixed tool names, tool annotations, structured output, `response_format` parameter, security hardening. Full protocol compliance.
-
-### 🧠 v3.0 — Code Intelligence Engine
-
-6 new compound tools, ~92% fewer tokens, full OpenGrok 1.7.x support, and a zero-config local source layer that knows your compiler flags. The largest update since the original rewrite.
-
-- 🛡️ **v3.3** — Security hardening, 100% code coverage, Node 24, enterprise-grade quality. 476 tests, zero audit findings.
-- 🌐 **v3.2** — Standalone MCP server. One-command installer, cross-platform credential wrappers, no VS Code required.
-- 🚀 **v3.1** — Auto-update notifications. One click in VS Code, no manual downloads.
-
-### 🔐 v2.0 — Full TypeScript Rewrite
-
-Native MCP integration, OS keychain credentials, 8 OpenGrok tools, SSRF protection, and 45 unit tests. The foundation everything else is built on.
-
-- 🎨 **v2.1** — Brand-new Configuration Manager UI. Dark/light mode, auto-test on save, no more setup prompts.
+- `buildSafeUrl()` mandated for all URL construction (SSRF) and
+  `assertSafePath()` before path-based requests (traversal); credentials never
+  in logs (`redactString()` single source of truth); `verifySsl` default
+  remains `true`.
 
 ---
 
@@ -1236,7 +1392,7 @@ v3.0 is the largest update since the original TypeScript rewrite. It transforms 
 
 - **`OPENGROK_LOCAL_COMPILE_DB_PATHS` env var**: Replaced `OPENGROK_LOCAL_BUILD_ROOT`. Accepts a comma-separated list of absolute paths to `compile_commands.json` files. Used by standalone (non-VS Code) deployments to explicitly provide compile databases.
 
-- **`get_file_content` local bypass — compile index path resolution** (`server.ts`): fixed the transparent local read to actually work when the local source tree path differs from the OpenGrok-relative path. Previously `tryLocalRead` only did a path-join of the OpenGrok path against configured roots, which fails when the workspace is an rsync of a deep subtree (e.g. `/home/user/code/myproject`) rather than a mirror of the full build tree. Now the bypass uses a two-tier lookup:
+- **`get_file_content` local bypass — compile index path resolution** (`server.ts`): fixed the transparent local read to actually work when the local source tree path differs from the OpenGrok-relative path. Previously `tryLocalRead` only did a path-join of the OpenGrok path against configured roots, which   fails when the workspace is an rsync of a deep subtree (e.g. `/home/user/code/myproject`) rather than a full copy of the build tree. Now the bypass uses a two-tier lookup:
   1. **Compile index hit** (`resolveFileFromIndex`): suffix-matches the OpenGrok path (e.g. `project/source/module/Foo.cpp`) against the absolute paths already stored in the compile index from `compile_commands.json` `file` fields (e.g. `/build/project/source/module/Foo.cpp`). Reads directly from the authoritative build-tree path. No root inference needed.
   2. **Path-join fallback** (`tryLocalRead`): unchanged, catches header files (`.h`/`.hpp`) that are not compiled units and therefore not present in the compile index.
 

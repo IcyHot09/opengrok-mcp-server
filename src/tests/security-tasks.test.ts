@@ -45,7 +45,7 @@ describe("Task 4.14 — Credential Age Checking", () => {
     expect(warning).toBeNull();
   });
 
-  it("returns null if credentials are recent (< 90 days)", () => {
+  it("returns null if credentials are recent (< 365 days)", () => {
     const stateFile = path.join(tmpDir, "last-credential-rotation.json");
     const recentDate = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
     fs.writeFileSync(stateFile, JSON.stringify({ rotatedAt: recentDate }));
@@ -54,9 +54,9 @@ describe("Task 4.14 — Credential Age Checking", () => {
     expect(warning).toBeNull();
   });
 
-  it("returns warning if credentials are stale (> 90 days)", () => {
+  it("returns warning if credentials are stale (> 365 days)", () => {
     const stateFile = path.join(tmpDir, "last-credential-rotation.json");
-    const oldDate = new Date(Date.now() - 100 * 24 * 3600 * 1000).toISOString();
+    const oldDate = new Date(Date.now() - 400 * 24 * 3600 * 1000).toISOString();
     fs.writeFileSync(stateFile, JSON.stringify({ rotatedAt: oldDate }));
 
     const warning = checkCredentialAge(tmpDir);
@@ -89,7 +89,7 @@ describe("Task 4.14 — Credential Age Checking", () => {
     try {
       process.env.XDG_CONFIG_HOME = "/custom/config";
       const dir = getConfigDirectory();
-      expect(dir).toBe("/custom/config/opengrok-mcp");
+      expect(dir.replace(/\\/g, "/")).toBe("/custom/config/opengrok-mcp");
     } finally {
       process.env.XDG_CONFIG_HOME = originalXdg;
     }
@@ -102,7 +102,7 @@ describe("Task 4.14 — Credential Age Checking", () => {
       delete process.env.XDG_CONFIG_HOME;
       process.env.HOME = "/home/testuser";
       const dir = getConfigDirectory();
-      expect(dir).toBe("/home/testuser/.config/opengrok-mcp");
+      expect(dir.replace(/\\/g, "/")).toBe("/home/testuser/.config/opengrok-mcp");
     } finally {
       process.env.XDG_CONFIG_HOME = originalXdg;
       process.env.HOME = originalHome;

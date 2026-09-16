@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { ObservationMasker } from '../server/observation-masker.js';
+import { ObservationMasker } from '../server/memory/observation-masker.js';
 
 // ---------------------------------------------------------------------------
 // Basic record / getMaskedHistoryHeader

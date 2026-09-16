@@ -4,182 +4,219 @@
 
 # OpenGrok MCP Server
 
-**MCP server bridging OpenGrok search engine with AI for instant context across massive codebases**
+**Code intelligence for any OpenGrok-indexed codebase — search, read, blame, symbol navigation, diffs, commit history, call graphs, dependency maps, and guided investigation. Optimized for token efficiency through Code Mode and AST-aware code reads.**
 
-[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/IcyHot09.opengrok-mcp-server?label=VS%20Code%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=IcyHot09.opengrok-mcp-server) [![Installs](https://img.shields.io/visual-studio-marketplace/i/IcyHot09.opengrok-mcp-server)](https://marketplace.visualstudio.com/items?itemName=IcyHot09.opengrok-mcp-server) [![npm](https://img.shields.io/npm/v/opengrok-mcp-server?logo=npm)](https://www.npmjs.com/package/opengrok-mcp-server) [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io) [![CI](https://github.com/IcyHot09/opengrok-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyHot09/opengrok-mcp-server/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/IcyHot09/opengrok-mcp-server)](https://github.com/IcyHot09/opengrok-mcp-server/releases)
+[![npm](https://img.shields.io/npm/v/opengrok-mcp-server?logo=npm)](https://www.npmjs.com/package/opengrok-mcp-server) [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-blue)](https://registry.modelcontextprotocol.io) [![CI](https://github.com/IcyHot09/opengrok-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/IcyHot09/opengrok-mcp-server/actions/workflows/ci.yml) [![GitHub Release](https://img.shields.io/github/v/release/IcyHot09/opengrok-mcp-server)](https://github.com/IcyHot09/opengrok-mcp-server/releases)
 
 </div>
 
 ---
 
-<details>
-<summary>📚 Table of Contents</summary>
+## Quick Start
 
-- [Overview](#overview)
-- [How to Install](#how-to-install)
-- [Configuration Guide](#configuration-guide)
-- [Prompting Examples](#prompting-examples)
-- [Tool Reference](#tool-reference)
-- [VS Code Integration](#vs-code-integration)
-- [System Architecture](#system-architecture)
-- [Building & Testing](#building--testing)
-- [Troubleshooting & Support](#troubleshooting--support)
-- [License Information](#license-information)
+**Option 1 — VS Code Extension (recommended)**
 
-</details>
+Install **OpenGrok MCP** from the VS Code Marketplace, or search "OpenGrok" in the Extensions panel. The configuration panel opens on first launch — enter your OpenGrok endpoint, username, and password, then click **Save Settings** and reload when prompted.
 
----
+The extension provides a visual configuration UI and manages the MCP server process automatically. No Python, external Node.js install, or manual environment setup required.
 
-## Overview
+**Option 2 — npm / npx CLI**
 
-> 💡 **Self-Contained Architecture:** The VS Code extension includes the MCP server pre-packaged. You don't need Python, external Node.js installations, or complex environment setups. Just install and go.
-
----
-
-## Installation
-
-### Option 1 — VS Code Extension (Recommended)
-
-Install **OpenGrok MCP** from the VS Code Marketplace, or search "OpenGrok" in the Extensions panel.
-
-The extension provides a visual configuration UI and manages the MCP server process automatically.
-
-### Option 2 — npm / npx
-
-**Global install:**
 ```bash
 npm install -g opengrok-mcp-server
 opengrok-mcp setup      # interactive wizard: URL, credentials, MCP client registration
 ```
 
-**Or run without installing:**
+Or run without installing:
+
 ```bash
 npx opengrok-mcp-server setup
 ```
 
-The wizard stores credentials securely in the OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret) with an encrypted file fallback for headless Linux.
+Other CLI commands:
 
----
-
-## Configuration Guide
-
-1. **Provide Connection Details:**
-   - After installation, the **Settings panel** will launch.
-   - Input your OpenGrok endpoint, username, and password. Hit **Save Settings**. *(Credentials are locked in your native OS keychain).*
-   - The plugin verifies the connection instantly. On your first run, VS Code will ask you to **Reload the Window** to register the MCP tools.
-   - *(Need to change this later? Use the `OpenGrok: Manage Configuration` command or click the gear icon in the status bar).*
-
-2. **Activate the MCP Source in Copilot:**
-   - Launch the **GitHub Copilot Chat** window. Ensure you're using **Agent** mode.
-   - Click the paperclip/tools icon (`🔧`) in the prompt box.
-   - (If an **Update Tools** button appears, click it).
-   - Locate **OpenGrok** in the list, check the box, and confirm.
-
-> ⚠️ Note that VS Code manages tool authorizations **per workspace**. If you open a different repository, you may need to re-check the OpenGrok box in Copilot.
-
-### CLI Commands (v7.0+)
-
-| Command | Description |
-| :------ | :---------- |
-| `npx opengrok-mcp-server setup` | Interactive wizard: configures your MCP client and stores credentials securely |
-| `opengrok-mcp status` | Health check: validates connectivity and detects installed MCP clients. Reads config from `~/.claude.json`, `~/.copilot/mcp-config.json`, or Codex TOML when `OPENGROK_BASE_URL` is not in env |
-| `opengrok-mcp --version` | Print version and exit |
-
-`setup` supports **Claude Code CLI**, **GitHub Copilot CLI**, and **Codex CLI**. VS Code is configured automatically by the extension — no CLI step needed. Credentials are stored in the OS keychain with an AES-256-GCM encrypted file fallback for headless/CI environments.
-
-### 🔌 Third-Party Client Support
-
-While tailored for VS Code, the integrated server logic runs perfectly with other agents natively supporting the MCP protocol, including:
-
-**Claude Desktop** | **Cursor IDE** | **Windsurf** | **Claude Code** | **Google Antigravity**
-
-> **👉 Refer to [MCP_CLIENTS.md](MCP_CLIENTS.md)** for configuration snippets and advanced daemon setups.
-
----
-
-## Prompting Examples
-
-Talk to GitHub Copilot Chat naturally about your codebase:
-
-```text
-Find the implementation of the render_pipeline function within the graphics engine project.
-
-Retrieve the contents of /src/utils/math.cpp from line 450 to 520.
-
-What is the definition of TextureManager? Please show me the header file declaration too.
-
-Look for all places in the code where ThreadPool is instantiated or referenced.
+```bash
+opengrok-mcp status      # health check: validates connectivity and detects installed MCP clients
+opengrok-mcp setup --test                     # test the stored connection without the wizard
+opengrok-mcp setup --set contextBudget=generous  # update one stored setting non-interactively
+opengrok-mcp export-audit --format json --output audit.jsonl  # export the audit log
+opengrok-mcp version     # print version and exit
+opengrok-mcp help        # show all commands
 ```
 
+Works with any MCP-compatible client (CLI or IDE). See [MCP_CLIENTS.md](MCP_CLIENTS.md) for config format and troubleshooting.
+
+Credentials are stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux libsecret) with an AES-256-GCM encrypted file fallback for headless environments.
+
 ---
 
-## Tool Reference
+> [!TIP]
+> **Automatic Updates** — The extension checks GitHub for new releases once per 24 hours and notifies you when one is available. Use **OpenGrok: Check for Updates** to check on demand.
 
-### Primary Operations
+---
 
-| Tool Name | Purpose |
-| ---- | ----------- |
-| `opengrok_search_code` | General search utility (full-text, defs, refs, path, history). Supports `file_type` filtering. |
-| `opengrok_find_file` | Locate files by name or directory pattern. |
-| `opengrok_get_file_content` | Read source code (requires `start_line` and `end_line` for large files). |
-| `opengrok_get_file_history` | Retrieve commit history logs. |
-| `opengrok_browse_directory` | View folder structure and contained files. |
-| `opengrok_list_projects` | See all indexed repositories/projects. |
-| `opengrok_get_file_annotate` | See line-by-line git blame information. |
-| `opengrok_get_file_symbols` | Extract classes, functions, macros, and structs rapidly from a single file. |
-| `opengrok_search_suggest` | Get query autocomplete recommendations. |
+## The Problem
 
-### 🚀 Optimized Workflows (Compound Tools)
+Engineers working in large codebases face a specific gap when using AI coding assistants. The model's context window contains the file currently open, the conversation, and whatever has been manually shared — but a production codebase has structure, history, and cross-module relationships that exist entirely outside that window.
 
-> 💡 These specialized tools merge multiple network requests into a single operation, reducing API chatter and cutting token usage by **up to 90%**.
+A symbol defined in one module and called from seventy others. A function whose behavior only becomes clear from the three commits that shaped it. An include chain stretching across a dozen directories. A call graph showing which components depend on a service before it gets refactored.
 
-| Compound Tool | Functionality Replaced | Efficiency Gain |
-| ---- | ---------------- | ------------- |
-| `opengrok_get_symbol_context` | 1) searches definition, 2) reads source, 3) fetches headers, 4) gets references | **~92% fewer tokens** |
-| `opengrok_search_and_read` | 1) executes search, 2) immediately fetches surrounding code context | **~92% fewer tokens** |
-| `opengrok_batch_search` | Combines 2-5 individual search queries; deduplicates `file:line` hits across queries | **~73% fewer tokens** |
-| `opengrok_index_health` | Checks latency, backend connectivity, staleness score, and latency trend | Diagnostic utility |
+Without access to the code index, the model fills these gaps by guessing: it fabricates file paths, invents function signatures, misattributes changes to authors. The model is not wrong because it is unintelligent — it is wrong because it is isolated.
 
-*(Note: The search functions support language filtering. Pass `file_type` as `java`, `cxx`, `python`, `golang`, etc.)*
+OpenGrok already solves this for human engineers. It indexes source in dozens of programming languages, maintains a full-text index across committed history, and exposes definition lookups, reference graphs, blame, directory traversal, and file history through a REST API. The problem was that AI tools had no way to reach it.
 
-### 🔍 Investigation & Analysis Tools (v5.6+)
+---
+
+## How It Works
+
+```text
+┌──────────────────────────────────────────────────────┐
+│  AI Client  (Claude, Copilot, Cursor, Codex …)       │
+└─────────────────────┬────────────────────────────────┘
+                      │  MCP  (stdio or HTTP)
+┌─────────────────────▼────────────────────────────────┐
+│  OpenGrok MCP Server  (Node.js)                      │
+│  opengrok_api  ──── full API spec, once per session  │
+│  opengrok_execute ─ run JavaScript in sandbox        │
+│                                                      │
+│  OpenGrok client ── search · symbols · blame · diffs │
+└─────────────────────┬────────────────────────────────┘
+                      │  HTTP (REST + web fallback)
+┌─────────────────────▼────────────────────────────────┐
+│  OpenGrok                                       │
+│  search · symbols · call graphs · index health       │
+└──────────────────────────────────────────────────────┘
+```
+
+The server exposes two primary tools. `opengrok_api` delivers the full API specification at session start. Every subsequent operation goes through `opengrok_execute`: the AI writes a JavaScript program using the `env.opengrok.*` object — `search`, `getFileContent`, `getFileAnnotate`, `getFileHistory`, `browseDir`, `getFileSymbols` — and submits it as a single execution.
+
+Intermediate results stay inside the sandbox; only the final `return` value crosses back to the context window. A complete investigation — find the symbol, read the definition, check who changed it, trace the callers — is one script, not a sequence of round-trips with results flowing through the context between each. Token savings of 80–95% are typical for complex investigations.
+
+All `env.opengrok.*` calls appear **synchronous** inside sandbox code — the QuickJS WASM VM bridges async HTTP calls transparently over a SharedArrayBuffer + Atomics channel (8 MB data region, 62 s per-call timeout, 62 s hard execution cap), while keeping the Node.js event loop free.
+
+**Memory bank** — two files persist across turns and session restarts: `active-task.md` (4 KB) for current investigation state and `investigation-log.md` (32 KB) for append-only findings. Inside the sandbox: `env.opengrok.readMemory()` / `env.opengrok.writeMemory()`. See the [Memory Bank](#memory-bank) reference below.
+
+---
+
+## Reference
+
+<details>
+<summary>Tool Reference</summary>
+
+31 tools total: **2–5 in Code Mode** (`opengrok_api` + `opengrok_execute`, plus 3 memory tools when `OPENGROK_ENABLE_MEMORY_TOOLS=true`) and **26 in standard mode** (`OPENGROK_CODE_MODE=false`).
+
+### Primary Tools
 
 | Tool | Purpose |
 | ---- | ------- |
-| `opengrok_what_changed` | Recent line changes grouped by commit — author, date, SHA, changed lines with context. Parameters: `project`, `path`, `since_days` |
-| `opengrok_dependency_map` | BFS traversal of `#include`/`import` chains up to configurable depth (1–3); directed graph with `uses`/`used_by` |
-| `opengrok_search_pattern` | Regex code search via `regexp=true`; returns `file:line:content` matches |
-| `opengrok_blame` | Git blame with line range (`start_line`/`end_line`); returns author, date, commit per line *(v5.6+)* |
-| `opengrok_call_graph` | Call chain tracing via OpenGrok API v2 `/symbol/{name}/callgraph` (requires `OPENGROK_API_VERSION=v2`) |
-| `opengrok_get_file_diff` | Unified diff between two revisions with full context lines — shows surrounding code so AI understands *why* a change was made; use `opengrok_get_file_history` to discover revision hashes |
+| `opengrok_search_code` | Full-text, definition, reference, path, and history search. Supports `file_type` filtering and `cursor` pagination. |
+| `opengrok_find_file` | Locate files by name or directory pattern. Supports `cursor` pagination. |
+| `opengrok_get_file_content` | Read source code. Use `start_line` / `end_line` for large files. |
+| `opengrok_get_file_history` | Commit history for a file. Supports `cursor` pagination. |
+| `opengrok_browse_directory` | View folder structure and contained files. Supports `cursor` / `limit` pagination. |
+| `opengrok_list_projects` | List all indexed repositories. |
+| `opengrok_get_file_annotate` | Line-by-line blame annotation. Supports `revision`, `start_line`/`end_line` range, `includeContent`. |
+| `opengrok_get_file_symbols` | Extract classes, functions, macros, and structs from a file. Supports `cursor` pagination. |
+| `opengrok_search_suggest` | Query autocomplete recommendations. Supports `context` passthrough for ranking. |
 
-### 🧠 Memory Tools (Code Mode only, v5.4+)
+### Compound Tools
+
+These merge multiple API calls into a single operation.
+
+| Tool | What it replaces | Savings |
+| ---- | ---------------- | ------- |
+| `opengrok_get_symbol_context` | Search definition + read source + fetch headers + get references | ~92% fewer tokens |
+| `opengrok_search_and_read` | Search + read surrounding context (cap: `OPENGROK_SEARCH_AND_READ_CAP`) | ~92% fewer tokens |
+| `opengrok_batch_search` | 2–5 parallel searches, deduplicated results | ~73% fewer tokens |
+| `opengrok_index_health` | Latency, connectivity, staleness score | Diagnostic |
+
+### Investigation Tools
 
 | Tool | Purpose |
 | ---- | ------- |
-| `opengrok_memory_status` | Shows both memory files (status, bytes, 3-line preview) — helps LLM decide whether to read |
-| `opengrok_read_memory` | Read `active-task.md` or `investigation-log.md` from the Living Document memory bank |
-| `opengrok_update_memory` | Write or append to memory files; auto-timestamps `investigation-log.md` entries |
+| `opengrok_what_changed` | Recent line changes grouped by commit — author, date, SHA, changed lines with context |
+| `opengrok_dependency_map` | BFS traversal of `#include`/`import` chains up to depth 3; directed graph with `uses`/`used_by` |
+| `opengrok_search_pattern` | Regex code search; returns `file:line:content` matches |
+| `opengrok_blame` | Blame with line range (`line_start` / `line_end`) and optional diff |
+| `opengrok_call_graph` | Call chain tracing via OpenGrok API v2 (requires `OPENGROK_API_VERSION=v2`; refs-based fallback on v1) |
+| `opengrok_get_file_diff` | Unified diff between two revisions with context lines |
+| `opengrok_get_compile_info` | C/C++ compiler flags and include paths from local `compile_commands.json` |
+| `opengrok_get_all_matches` | All matching lines in a file when search shows truncated hits |
+| `opengrok_get_file_history_with_files` | Commit history with co-changed file lists via RSS feed |
+| `opengrok_get_download_url` | Direct download URL for a file (no HTTP call) |
+| `opengrok_list_groups` | Project groups (empty when admin auth required) |
+| `opengrok_get_suggest_popularity` | Popular suggestions for a project field (empty when admin auth required) |
+| `opengrok_get_project_repositories` | Repositories for a project (empty when admin auth required) |
 
-### 🧬 Code Mode (v5+) — For Large Multi-Language Codebases
+*(Note: search tools support language filtering. Pass `file_type` using the canonical analyzer name — `cxx` for C++, `golang` for Go, `sh` for shell, `javascript` for JS. Aliases accepted: `cpp`/`c++`→`cxx`, `go`→`golang`, `bash`/`shell`→`sh`, `js`→`javascript`, `ts`→`typescript`, `cs`→`csharp`, `py`→`python`, `rb`→`ruby`, `rs`→`rust`.)*
 
-Set `OPENGROK_CODE_MODE=true` to switch to a 5-tool interface optimised for multi-step investigations:
+**defs/refs/symbol fallback notes** — `defs`, `refs`, and `symbol` searches require a project scope (pass `projects` or set `OPENGROK_DEFAULT_PROJECT`); without one they may return too many cross-project hits. On instances where the REST endpoint returns an error or empty results for these types, the client automatically falls back to web-UI parsing so the LLM still gets answers. `opengrok_call_graph` needs API v2 and degrades to a refs-based view on v1.
 
-| Tool | Purpose |
-| ---- | ------- |
-| `opengrok_api` | Get the full API spec (call once at session start). With `OPENGROK_ENABLE_ELICITATION=true`, also prompts the user to select a working project if none is configured. |
-| `opengrok_execute` | Run JavaScript in a sandboxed QuickJS VM with access to all OpenGrok operations via `env.opengrok.*` |
+</details>
 
-All `env.opengrok.*` calls appear **synchronous** inside your code — the sandbox bridges async HTTP calls transparently using a SharedArrayBuffer + Atomics channel. Token savings of 80–95% are typical for complex investigations.
+<details>
+<summary>Code Mode API</summary>
 
-**v9.0+ sandbox methods for interactive prompts and AI assistance:**
+Set `OPENGROK_CODE_MODE=true` (the default). Call `opengrok_api` once at session start to receive the full API spec. All subsequent operations go through `opengrok_execute`.
 
-| Method | Purpose |
+All sandbox API calls are synchronous — flat globals (`search(...)`), no `await`. The `env.opengrok.*` object form (`env.opengrok.search(...)`) is equivalent.
+
+**Search & Discovery**
+
+| Method | Returns |
 | ------ | ------- |
-| `env.opengrok.elicit(message, schema)` | Pause execution and ask the user to select from a list — e.g., pick the correct file from multiple matches. Returns `{ action, content }`. Requires `OPENGROK_ENABLE_ELICITATION=true`. |
-| `env.opengrok.sample(prompt, opts?)` | Request an AI-generated string from the client's LLM — e.g., reformulate a zero-result query. Returns `string \| null` (null when client doesn't support sampling). Always null-guard the result. |
+| `env.opengrok.search(query, opts?)` | Full text, defs, refs, symbol, path, hist. Opts: `searchType`, `projects`, `maxResults` (default 5), `startIndex`, `cursor`, `fileType`, `sort`, `maxHitsPerFile`, `dir`, `pathFilter`, `file`, `expandFunction` |
+| `env.opengrok.batchSearch(queries[], opts?)` | One result-set per query (max 10), run in parallel on the host. Per-query `expandFunction: true` includes enclosing function context |
+| `env.opengrok.findFile(pattern, opts?)` | `{ totalCount, results: [{project, path}], cursor? }` |
+| `env.opengrok.searchSuggest(query, opts?)` | `{ query, field, suggestions, time }`. Opts: `field`, `project`/`projects`, `context` (other-field values for ranking) |
+| `env.opengrok.getAllMatchesInFile(project, path, query, opts?)` | All matching lines in a file when search results show truncated hits. Also used automatically when `search()` is given a `file:` filter (no pagination) |
 
-When `env.opengrok.search()` returns **zero results** and sampling is available, `_suggestions: string[]` is automatically injected into the result — check it before calling `sample()` explicitly.
+`search()` uses canonical file type names only (e.g. `cxx`, `golang`, `sh`) — see the alias list above. Pass `expandFunction: true` to expand matching results to their enclosing function body (adds host-side reads, up to 3 files per call).
+
+**Cursor pagination** — Methods that return a `cursor` field (`search`, `findFile`, `browseDir`, `getFileSymbols`, `getFileHistory`, `getFileDiff`) support pagination. Pass the cursor back as `opts.cursor` on the next call to fetch the next page. If a cursor has expired (session restarted or too much time elapsed), the response contains `{ _cursorExpired: true }` — restart pagination from the beginning.
+
+**Read & Navigate**
+
+| Method | Returns |
+| ------ | ------- |
+| `env.opengrok.getFileContent(project, path, opts?)` | `{ project, path, content, lineCount, sizeBytes, startLine }`. Range reads expand to the enclosing function by default; pass `{expandFunction: false}` to keep the exact range |
+| `env.opengrok.browseDir(project, path?, opts?)` | `{ project, path, entries, cursor? }` |
+| `env.opengrok.getFileSymbols(project, path, opts?)` | `{ project, path, symbols, cursor? }` |
+| `env.opengrok.getFileOverview(project, path, opts?)` | `{ lang, sizeLines, sizeBytes, imports, topLevelSymbols, recentAuthors, lastRevision }`. Pass `includeImports:true` to include imports (omitted by default) |
+
+**History & Blame**
+
+| Method | Returns |
+| ------ | ------- |
+| `env.opengrok.getFileAnnotate(project, path, opts?)` | `{ project, path, lines: [{lineNumber, revision, author, date, content}] }`. Opts: `revision`, `startLine`/`endLine` (OOB throws), `includeContent` (default true) |
+| `env.opengrok.getFileHistory(project, path, opts?)` | `{ project, path, entries, cursor? }` (`maxEntries`, `cursor`) |
+| `env.opengrok.getFileHistoryWithFiles(project, path, opts?)` | Commit history with co-changed file lists via RSS feed (`maxEntries`) |
+| `env.opengrok.getFileDiff(project, path, rev1, rev2, opts?)` | `{ hunks, unifiedDiff, stats }`. `includeHunks:true` (default) keeps hunks; `false` returns `{unifiedDiff,stats}` only. Supports hunk-level cursor pagination |
+| `env.opengrok.getGuidanceForPath(project, path, opts?)` | `{ guidance: [{path, scope, content, truncated}], missingCount, errorCount, incomplete, capped, searchedUpTo }` — AGENTS.md/CLAUDE.md discovery |
+
+**Code Intelligence**
+
+| Method | Returns |
+| ------ | ------- |
+| `env.opengrok.traceCallChain(symbol, opts?)` | Call chain tracing. `direction: 'callers'\|'callees'\|'both'`. ASYNC — may return `{status:'computing'}` on first call; retry the same call to collect the cached result |
+| `env.opengrok.getSymbolContext(symbol, opts?)` | Definition + refs + headers combined. Definition expands to the full function body via tree-sitter |
+| `env.opengrok.dependencyMap(project, path, opts?)` | Dependency graph: `uses` (imports) + `used_by` (references). ASYNC with fast-path — may return `{status:'computing'}`; retry to get the cached graph. `direction: 'uses'\|'used_by'\|'both'` |
+| `env.opengrok.getCompileInfo(path)` | C/C++ compiler flags and include paths, or `null` when no local compile DB is configured |
+
+`traceCallChain` callers come from refs search; callees come from tree-sitter AST analysis for supported languages (C/C++, Java, Go, Python, JS/TS, Rust, and more). Both long-running methods fan out over a **background client** — a rate-limit-free sibling connection with a short per-operation budget — so deep traversals don't consume the foreground rate-limit quota.
+
+**System**
+
+| Method | Returns |
+| ------ | ------- |
+| `env.opengrok.indexHealth()` | `{ connected, latencyMs, baseUrl, serverVersion?, suggestConfig? }` |
+| `env.opengrok.listProjects(filter?)` | `{ projects }` — all indexed repositories (standard-mode equivalent: `opengrok_list_projects`) |
+| `env.opengrok.readMemory(filename)` | Read `active-task.md` or `investigation-log.md` (`null` when uninitialized) |
+| `env.opengrok.writeMemory(filename, content, mode?)` | `'overwrite'` (default) or `'append'`; max 5 writes per execution |
+| `env.opengrok.elicit(message, schema)` | Ask the user to choose (requires `OPENGROK_ENABLE_ELICITATION=true`) |
+| `env.opengrok.sample(prompt, opts?)` | Request AI text from the client's LLM (requires `OPENGROK_ENABLE_SAMPLING=true`; `null` when unsupported — always null-guard) |
+
+**Example**
 
 ```javascript
 // Example opengrok_execute code
@@ -192,328 +229,254 @@ const content = env.opengrok.getFileContent(first.project, first.path, {
 return { callerFile: first.path, code: content.content };
 ```
 
-The sandbox exposes a **Living Document Memory Bank** — two persistent markdown files that survive across turns:
+When `search()` returns **zero results** and sampling is enabled, `_suggestions: string[]` is automatically injected into the result — check it before calling `sample()` explicitly.
+
+**Tree-sitter intelligence** — range reads and `expandFunction` expand matches to enclosing function bodies using tree-sitter AST analysis (WASM grammars, no host toolchain needed). Per-tier line budgets apply: `minimal` 200 lines, `standard` 400 lines, `generous` 600 lines. Override the grammar directory with `OPENGROK_GRAMMAR_DIR`; contribute new grammars via `npm run copy-grammars` (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+**fitToBuffer truncation** — sandbox results that exceed the 8 MB bridge buffer are trimmed by `fitToBuffer()`, which keeps complete result elements rather than truncating mid-JSON. Trimmed results carry `_truncated: true` — narrow the query or page with `cursor` when you see it.
+
+**Elicitation** (`OPENGROK_ENABLE_ELICITATION=false` to disable, default: `true`)
+
+When enabled, `opengrok_api` prompts the user to select a working project at session start if no `OPENGROK_DEFAULT_PROJECT` is configured and more than one project exists. Sandbox code can also call `env.opengrok.elicit()` to ask the user to choose between multiple matches during execution. Requires a client that supports MCP Elicitation — Claude Code v2.1.76+ supports this. Degrades gracefully to `{ action: "cancel" }` on other clients.
+
+**Sampling** (`OPENGROK_ENABLE_SAMPLING=true`, default: `false`)
+
+Delegates LLM calls back to the client via MCP Sampling, using the client's model subscription without separate API keys. Triggers automatically in three places: sandbox error explanation, large dependency graph summarization (>10 nodes), and zero-result query reformulation (`_suggestions` injection). VS Code Copilot supports sampling; other clients vary. The server degrades gracefully when sampling is unavailable.
+
+> [!WARNING]
+> Sampling triggers are automatic — not on-demand. A single investigation session can generate many sampling calls across sandbox errors, zero-result searches, and large dependency graphs. Some clients consume premium requests per call after the first confirmation prompt. Enable with this in mind.
+
+</details>
+
+<details>
+<summary>Memory Bank</summary>
+
+Code Mode includes 2 tools by default (api + execute; 5 with `OPENGROK_ENABLE_MEMORY_TOOLS=true`). Two files persist across turns and session restarts:
+
+| Tool | Purpose |
+| ---- | ------- |
+| `opengrok_memory_status` | Status, size, and 3-line preview of both memory files |
+| `opengrok_read_memory` | Read `active-task.md` or `investigation-log.md` |
+| `opengrok_update_memory` | Write or append; auto-timestamps `investigation-log.md` entries |
 
 | File | Size Limit | Purpose |
 | ---- | ---------- | ------- |
 | `active-task.md` | ≤ 4 KB | Current task state: `task:`, `last_symbol:`, `next_step:`, `open_questions:`, `status:` |
 | `investigation-log.md` | ≤ 32 KB | Append-only log of findings, grouped by `## YYYY-MM-DD HH:MM:` headings |
 
-Access via `env.opengrok.readMemory(filename)` / `env.opengrok.writeMemory(filename, content)` inside the sandbox, or via the `opengrok_read_memory` / `opengrok_update_memory` / `opengrok_memory_status` tools in classic mode. Delta encoding returns `[unchanged]` on repeated reads; richness-scored trimming keeps the most valuable log entries when space is tight.
-
-<details>
-<summary>⚙️ Automated Compilation Data (Optional)</summary>
-
-| Tool Name | Capability |
-| ---- | ----------- |
-| `opengrok_get_compile_info` | Reads your local `compile_commands.json` to extract compiler flags, defines, and include directories for exact C/C++ accuracy. |
+Delta encoding returns `[unchanged]` on repeated reads of unmodified content. Richness-scored trimming keeps the highest-value log entries when space is tight.
 
 </details>
 
-### Project Picker & Interactive Disambiguation (Elicitation)
-
-When `OPENGROK_ENABLE_ELICITATION=true`, the server uses MCP Elicitation in two places:
-
-1. **Session start** — `opengrok_api` (Code Mode) prompts the user to select a working project if no `OPENGROK_DEFAULT_PROJECT` is configured and more than one project exists.
-2. **Mid-execution** — Sandbox JS can call `env.opengrok.elicit(message, schema)` to ask the user to choose between multiple matching files, revisions, or projects at any point during execution.
-
-Requires a client that supports MCP Elicitation:
-
-- **Claude Code** v2.1.76+ ✓
-
-Enable in the VS Code configuration panel, or set `OPENGROK_ENABLE_ELICITATION=true` in your MCP client environment config. The server degrades gracefully to `{ action: "cancel" }` on unsupported clients — no errors.
-
-### LLM Sampling
-
-The server delegates LLM calls back to the client via MCP Sampling — using the client's model subscription without needing separate API keys. Used in three places:
-
-1. **Sandbox error explanation** — When `opengrok_execute` code fails, sampling generates a concise explanation and fix suggestion.
-2. **Dependency graph summarization** — Large `opengrok_dependency_map` graphs (>10 nodes) are summarized via sampling in legacy mode.
-3. **Zero-result query reformulation** (v9.0+, Code Mode) — When `env.opengrok.search()` returns 0 results, sampling auto-injects `_suggestions` into the result object. Sandbox JS can also call `env.opengrok.sample(prompt)` explicitly for any AI-generated text.
-
-Supported clients:
-- **VS Code Copilot** ✓
-- **Claude Code** — support pending (tracked in [anthropics/claude-code#1785](https://github.com/anthropics/claude-code/issues/1785))
-
-The server degrades gracefully when sampling is unavailable — `sample()` returns `null`, `_suggestions` is not injected.
-
----
-
-## VS Code Integration
-
-### Palette Commands
-
-| Command Prompt | Action Performed |
-| :------ | :---------- |
-| `OpenGrok: Manage Configuration` | Launches the interactive settings GUI |
-| `OpenGrok: Configure Credentials` | Fast CLI-style input for authentication |
-| `OpenGrok: Test Connection` | Validates API access and token validity |
-| `OpenGrok: Show Server Logs` | Exposes background process stdout/stderr |
-| `OpenGrok: Check for Updates` | Polls GitHub for new releases |
-| `OpenGrok: Status Menu` | Opens the context menu directly |
-
-### Core Settings Profile
-
 <details>
-<summary>Expand for JSON Settings Reference</summary>
+<summary>Configuration</summary>
 
-| Key | Format | Primary Usage |
-| :--- | :--- | :---------- |
-| `opengrok-mcp.baseUrl` | `string` | The URI of your OpenGrok deployment |
-| `opengrok-mcp.username` | `string` | Authentication identity |
-| `opengrok-mcp.verifySsl` | `boolean` | Disable when using corporate self-signed certs (default: false) |
-| `opengrok-mcp.proxy` | `string` | Optional HTTP traffic router |
+#### Core
 
-</details>
-
-### Advanced Configuration (v7 — env vars)
-
-For the standalone server (`npx opengrok-mcp-server` or Claude Code), set these environment variables:
-
-#### Core Settings
-
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_BASE_URL` | URL | OpenGrok server base URL (required) |
-| `OPENGROK_USERNAME` | string | Authentication username (optional — leave unset for anonymous access) |
-| `OPENGROK_PASSWORD` | string | Authentication password (prefer OS keychain via `npx opengrok-mcp-server setup`) |
-| `OPENGROK_VERIFY_SSL` | `true` (default) / `false` | Disable TLS verification for self-signed certs |
-| `OPENGROK_TIMEOUT` | integer (seconds, default: `30`) | HTTP request timeout |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_BASE_URL` | _(blank)_ | OpenGrok server base URL (required). Supplied by the setup wizard or VS Code settings. |
+| `OPENGROK_USERNAME` | _(blank)_ | Authentication username. Leave unset for anonymous access. |
+| `OPENGROK_PASSWORD` | _(blank)_ | Authentication password. Prefer OS keychain via `opengrok-mcp setup`. |
+| `OPENGROK_PASSWORD_FILE` | _(blank)_ | Path to a file containing the OpenGrok password (file-mounted secret for CI/containers). Alternative to `OPENGROK_PASSWORD`. |
+| `OPENGROK_VERIFY_SSL` | `true` | Set `false` to disable TLS verification for self-signed certs. |
+| `OPENGROK_TIMEOUT` | `30` | HTTP request timeout in seconds. |
 
 #### Code Mode & Performance
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_CODE_MODE` | `true` (default) / `false` | Switch to 5-tool Code Mode (opengrok_api + opengrok_execute + 3 memory tools) |
-| `OPENGROK_CONTEXT_BUDGET` | `standard` (default) / `minimal` / `generous` | Response size tier: 8 KB / 4 KB / 16 KB |
-| `OPENGROK_RESPONSE_FORMAT_OVERRIDE` | `tsv` / `toon` / `yaml` / `text` / `markdown` | Force a response format globally for all tools |
-| `OPENGROK_DEFAULT_PROJECT` | string | Default project name to scope all searches |
-| `OPENGROK_DEFAULT_MAX_RESULTS` | integer (default: `25`) | Default search result limit |
-| `OPENGROK_LOCAL_COMPILE_DB_PATHS` | comma-separated paths | Paths to `compile_commands.json` for C/C++ compiler flag extraction |
-| `OPENGROK_ENABLE_CACHE_HINTS` | `true` / `false` (default: `false`) | Enable `cache-control: immutable` hints for prompt caching infrastructure |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_CODE_MODE` | `true` | Code Mode (2–5 tools: `opengrok_api` + `opengrok_execute` + 3 memory tools when enabled). Set `false` for the 26 legacy standard tools. |
+| `OPENGROK_CONTEXT_BUDGET` | `standard` | Response size tier: `minimal` (8 KB, 200-line tree-sitter budget) / `standard` (16 KB, 400-line) / `generous` (32 KB, 600-line). |
+| `OPENGROK_MAX_RESPONSE_BYTES` | — | Override the per-response byte cap (takes precedence over `OPENGROK_CONTEXT_BUDGET`). |
+| `OPENGROK_SEARCH_AND_READ_CAP` | — | Override the `opengrok_search_and_read` compound cap (defaults: 2 KB / 4 KB / 8 KB per tier). |
+| `OPENGROK_RESPONSE_FORMAT_OVERRIDE` | — | Force a format globally: `markdown` / `json` / `tsv` / `toon` / `yaml` / `text`. |
+| `OPENGROK_DEFAULT_PROJECT` | — | Default project name to scope all searches. |
+| `OPENGROK_DEFAULT_MAX_RESULTS` | `25` | Default search result limit. |
+| `OPENGROK_LOCAL_COMPILE_DB_PATHS` | — | Comma-separated paths to `compile_commands.json` for C/C++ flag extraction. |
+| `OPENGROK_GRAMMAR_DIR` | auto-detected | Override path to tree-sitter grammar WASM files. Default: walk up from the bundle directory to find `grammars/`. |
 
 #### Memory Bank
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_MEMORY_BANK_DIR` | path | Override directory for `active-task.md` + `investigation-log.md` files |
-| `OPENGROK_ENABLE_OBSERVATION_MASKER` | `true` / `false` (default: `false`) | Prepend compact history summaries to `opengrok_execute` results after the full-text window fills. Only useful for clients that truncate context (not Claude Code or Cursor). |
-| `OPENGROK_OBSERVATION_MASKER_TURNS` | integer (default: `10`) | Full-text window size: how many of the most-recent `opengrok_execute` results to keep in full before older ones are replaced with compact summaries. |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_ENABLE_MEMORY_TOOLS` | `false` | Register the 3 Code Mode memory tools (memory status, read, update). Off = api + execute only. |
+| `OPENGROK_MEMORY_BANK_DIR` | server default | Override directory for `active-task.md` + `investigation-log.md`. |
+| `OPENGROK_ENABLE_OBSERVATION_MASKER` | `false` | Prepend compact history summaries to `opengrok_execute` results after the full-text window fills. Only useful for clients that truncate context. |
+| `OPENGROK_OBSERVATION_MASKER_TURNS` | `10` | Number of recent `opengrok_execute` results to keep in full before older ones are compacted. |
 
 #### Rate Limiting
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_RATELIMIT_ENABLED` | `true` (default) / `false` | Enable token-bucket rate limiting |
-| `OPENGROK_RATELIMIT_RPM` | integer (default: `60`) | Global requests-per-minute limit |
-| `OPENGROK_PER_TOOL_RATELIMIT` | `tool:rpm,tool:rpm` | Per-tool RPM overrides (e.g., `opengrok_execute:10,opengrok_batch_search:20`) |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_RATELIMIT_ENABLED` | `true` | Enable token-bucket rate limiting. |
+| `OPENGROK_RATELIMIT_RPM` | `60` | Global requests-per-minute limit. |
+| `OPENGROK_PER_TOOL_RATELIMIT` | — | Per-tool RPM overrides: `opengrok_execute:15,opengrok_batch_search:20`. Defaults: `opengrok_execute` 15 rpm, `opengrok_batch_search` 5 rpm, `opengrok_dependency_map` 10 rpm, `opengrok_call_graph` 5 rpm. |
 
 #### Response Cache
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_CACHE_ENABLED` | `true` (default) / `false` | Enable TTL response cache |
-| `OPENGROK_CACHE_MAX_SIZE` | integer (default: `500`) | Max cache entries |
-| `OPENGROK_CACHE_SEARCH_TTL` | seconds (default: `300`) | Search result cache TTL |
-| `OPENGROK_CACHE_FILE_TTL` | seconds (default: `600`) | File content cache TTL |
-| `OPENGROK_CACHE_HISTORY_TTL` | seconds (default: `1800`) | File history cache TTL |
-| `OPENGROK_CACHE_PROJECTS_TTL` | seconds (default: `3600`) | Project list cache TTL |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_CACHE_ENABLED` | `true` | Enable TTL response cache. |
+| `OPENGROK_CACHE_MAX_SIZE` | `500` | Max cache entries. |
+| `OPENGROK_CACHE_MAX_BYTES` | `52428800` | Max total cache size in bytes (50 MB). |
+| `OPENGROK_CACHE_SEARCH_TTL` | `300` | Search result cache TTL in seconds. |
+| `OPENGROK_CACHE_FILE_TTL` | `600` | File content cache TTL in seconds. |
+| `OPENGROK_CACHE_HISTORY_TTL` | `1800` | File history cache TTL in seconds. |
+| `OPENGROK_CACHE_PROJECTS_TTL` | `3600` | Project list cache TTL in seconds. |
 
-#### Security & Audit
+#### MCP Protocol
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_AUDIT_LOG_FILE` | path | File path for structured audit log (CSV or JSON) |
-
-#### MCP Protocol Features
-
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_ENABLE_ELICITATION` | `true` / `false` (default: `false`) | Enable project picker at `opengrok_api` startup (Code Mode) and `env.opengrok.elicit()` in sandbox. Requires a supporting MCP client. |
-| `OPENGROK_ENABLE_FILES_API` | `true` / `false` (default: `false`) | Enable FileReferenceCache for `investigation-log.md` (SHA-256 content-addressed) |
-| `OPENGROK_SAMPLING_MODEL` | string | Model preference for MCP Sampling (error explanation, graph summarization) |
-| `OPENGROK_SAMPLING_MAX_TOKENS` | integer (default: `256`, max: `4096`) | Token budget for MCP Sampling responses |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_ENABLE_ELICITATION` | `true` | Project picker at `opengrok_api` startup and `env.opengrok.elicit()` in sandbox. |
+| `OPENGROK_ENABLE_SAMPLING` | `false` | MCP Sampling for error explanation, graph summarization, and zero-result recovery. |
+| `OPENGROK_ENABLE_FILES_API` | `false` | FileReferenceCache for `investigation-log.md` (SHA-256 content-addressed). |
+| `OPENGROK_SAMPLING_MODEL` | — | Model preference for sampling calls. |
+| `OPENGROK_SAMPLING_MAX_TOKENS` | `256` | Token budget for sampling responses (max: 4096). |
 
 #### OpenGrok API
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_API_VERSION` | `v1` (default) / `v2` | OpenGrok REST API version (`v2` required for `opengrok_call_graph`) |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_API_VERSION` | `v1` | REST API version. Use `v2` for `opengrok_call_graph`. |
 
-#### HTTP Transport (v7.0+)
+#### Security & Audit
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_HTTP_PORT` | integer | Expose Streamable HTTP transport on this port (in addition to stdio) |
-| `OPENGROK_HTTP_MAX_SESSIONS` | integer (default: `100`) | Max concurrent HTTP sessions before new connections are rejected |
-| `OPENGROK_HTTP_AUTH_TOKEN` | string | Static Bearer token for HTTP endpoint authentication |
-| `OPENGROK_JWKS_URI` | URL | JWKS endpoint for JWT validation (OAuth 2.1 resource server mode) |
-| `OPENGROK_RESOURCE_URI` | URL | This server's resource URI, advertised in RFC 9728 metadata |
-| `OPENGROK_AUTH_SERVERS` | comma-separated URLs | Trusted authorization server URIs |
-| `OPENGROK_SCOPE_MAP` | `scope:role,...` | Map JWT scopes to RBAC roles (e.g., `read:readonly,admin:admin`) |
-| `OPENGROK_STRICT_OAUTH` | `true` / `false` | Reject requests without a valid JWT when `OPENGROK_JWKS_URI` is set |
-| `OPENGROK_ALLOWED_ORIGINS` | comma-separated origins | CORS allowlist (replaces wildcard CORS) |
-| `OPENGROK_RBAC_TOKENS` | `tok1:role,tok2:role` | Role-based access tokens: `admin` / `developer` / `readonly` |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_AUDIT_LOG_FILE` | — | File path for structured audit log (CSV or JSON). |
+| `OPENGROK_STRICT_SSRF` | `false` | Reject base URLs and redirects resolving to private/loopback IP ranges (default: warn-only). |
 
 #### Logging
 
-| Variable | Values | Description |
-| :--- | :--- | :--- |
-| `OPENGROK_LOG_LEVEL` | `debug` / `info` (default) | Verbose structured logging to stderr |
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `OPENGROK_LOG_LEVEL` | `info` | Set `debug` for verbose structured logging to stderr. |
 
-VS Code users can set `opengrok-mcp.codeMode`, `opengrok-mcp.contextBudget`, `opengrok-mcp.memoryBankDir`, `opengrok-mcp.defaultProject`, `opengrok-mcp.responseFormatOverride`, `opengrok-mcp.compileDbPaths`, `opengrok-mcp.enableObservationMasker`, and `opengrok-mcp.observationMaskerTurns` in VS Code settings instead.
+#### Proxy
 
-> **MCP SDK Note:** This version uses `@modelcontextprotocol/sdk` v1.29.0.
-> MCP SDK v2 is in pre-alpha; we will migrate when stable (expected Q3-Q4 2026).
-> v2 will enable enhanced completions for tool parameters and resource templates.
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `HTTP_PROXY` | — | HTTP proxy for outbound requests. |
+| `HTTPS_PROXY` | — | HTTPS proxy for outbound requests. |
 
----
+VS Code users can set `opengrok-mcp.baseUrl`, `opengrok-mcp.codeMode`, `opengrok-mcp.contextBudget`, `opengrok-mcp.memoryBankDir`, `opengrok-mcp.defaultProject`, `opengrok-mcp.responseFormatOverride`, `opengrok-mcp.compileDbPaths`, `opengrok-mcp.enableObservationMasker`, and `opengrok-mcp.observationMaskerTurns` in VS Code settings instead. Secret values such as the password are never written to VS Code settings.
 
-## HTTP Transport (v7.0+)
+> **MCP SDK Note:** This version uses `@modelcontextprotocol/sdk` v1.30.0 (v1 line).
 
-By default the server communicates over **stdio** (standard MCP). For team deployments, you can also expose a **Streamable HTTP endpoint**:
+</details>
 
-```bash
-OPENGROK_HTTP_PORT=3666 npm run serve
-# or add to your MCP client config:
-# "OPENGROK_HTTP_PORT": "3666"
-```
+<details>
+<summary>HTTP Transport & Auth</summary>
 
-### Session Management
+By default the server communicates over **stdio**. For shared team deployments, the HTTP transport layer is available as a library API (`startHttpTransport()` in `src/server/transport/http-transport.ts`) but is **not yet wired into the CLI entry point** — `OPENGROK_HTTP_PORT` is documented below but `main.ts` does not yet read it to start the HTTP server automatically. Use `startHttpTransport()` directly in custom deployments.
+
+#### Session Management
 
 - Each HTTP client receives an isolated `McpServer` instance (per-session factory pattern)
 - Sessions expire after 30 minutes of inactivity; `OPENGROK_HTTP_MAX_SESSIONS` caps concurrent sessions (default: 100)
 - `GET /mcp/sessions` returns JSON with active session count and oldest session age
 
-### Authentication
+#### Authentication
 
-Configure one of the following:
+| Method | Configuration |
+| ------ | ------------- |
+| Static Bearer token | `OPENGROK_HTTP_AUTH_TOKEN=mysecret` |
+| OAuth 2.1 resource server | `OPENGROK_JWKS_URI=https://idp.example.com/.well-known/jwks.json` + `OPENGROK_RESOURCE_URI=https://opengrok-mcp.example.com` |
+| RBAC with named roles | `OPENGROK_RBAC_TOKENS='alice-token:admin,bot-token:readonly'` |
 
-| Method | Config |
-| ------ | ------ |
-| **Static Bearer token** | `OPENGROK_HTTP_AUTH_TOKEN=mysecret` |
-| **OAuth 2.1 resource server** | `OPENGROK_JWKS_URI=https://idp.example.com/.well-known/jwks.json` + `OPENGROK_RESOURCE_URI=https://opengrok-mcp.example.com` |
-| **RBAC with named roles** | `OPENGROK_RBAC_TOKENS='alice-token:admin,bot-token:readonly'` |
+In resource server mode, this server validates JWTs issued by your own IdP — there is no built-in `/token` endpoint. When `OPENGROK_JWT_ISSUER` is set, tokens from other issuers are rejected. RFC 9728 protected resource metadata is served at `/.well-known/oauth-protected-resource`.
 
-In resource server mode, this server validates JWTs issued by your own IdP — there is no built-in `/token` endpoint. RFC 9728 protected resource metadata is served at `/.well-known/oauth-protected-resource`.
-
-### RBAC Roles
+#### RBAC Roles
 
 | Role | Permissions |
 | ---- | ----------- |
 | `admin` | Full access to all tools and configuration |
 | `developer` | All search, read, memory, and code tools |
-| `readonly` | Search and read tools only; no memory writes, no code execution |
+| `readonly` | Search and read tools only — no memory writes, no code execution |
 
-> **Fail-safe**: unknown or missing tokens default to `readonly`, not `admin`.
+Unknown or missing tokens are rejected with 403 Forbidden. When no authentication is configured, unauthenticated requests are granted `admin` (local dev mode).
 
----
+#### CORS
 
-## Security (v7.0+)
+Browser-based clients are gated by an origin allowlist (`OPENGROK_ALLOWED_ORIGINS`, comma-separated). Without auth configured, loopback origins (`localhost`, `127.0.0.1`, `[::1]`) are allowed for local development; once auth is configured (`OPENGROK_HTTP_AUTH_TOKEN` or RBAC tokens), loopback is no longer implicit — list every allowed origin explicitly, including local ones.
 
-v7.0 includes a comprehensive security audit with the following hardening:
+</details>
+
+<details>
+<summary>Security</summary>
 
 | Area | Protection |
 | ---- | ---------- |
-| **SSRF** | DNS rebinding detection + IPv6-mapped address blocking in `buildSafeUrl` |
-| **Path traversal** | NFC normalization + bidirectional Unicode character blocking |
-| **HTML injection** | `he.decode` on all parser text nodes before display |
-| **Prompt injection** | `escapeMarkdownField` in all formatters |
-| **Token comparison** | `crypto.timingSafeEqual` for all Bearer token comparisons |
-| **CORS** | Allowlist via `OPENGROK_ALLOWED_ORIGINS` (no wildcard in production) |
-| **Security headers** | `X-Content-Type-Options`, `X-Frame-Options`, CSP on HTTP responses |
-| **Credential encryption** | AES-256-GCM (migrated from CBC; auto-upgrades existing files) |
-| **Rate limiting** | Integer-based token bucket (eliminates float drift) |
-| **ReDoS** | `minimatch` for glob patterns |
-| **Audit logs** | Injection-escaped structured audit entries |
+| SSRF | DNS rebinding detection + IPv6-mapped address blocking in `buildSafeUrl`; strict mode via `OPENGROK_STRICT_SSRF` |
+| Path traversal | NFC normalization + bidirectional Unicode character blocking in `assertSafePath` |
+| HTML injection | Entity decoding on all parser text nodes before display |
+| Prompt injection | Markdown-field escaping in all formatters |
+| Token comparison | `crypto.timingSafeEqual` for all Bearer token comparisons |
+| CORS | Allowlist via `OPENGROK_ALLOWED_ORIGINS` — no wildcard in production |
+| Security headers | `X-Content-Type-Options`, `X-Frame-Options`, CSP on HTTP responses |
+| Credential encryption | AES-256-GCM with auto-upgrade from older encrypted files |
+| Rate limiting | Integer-based token bucket (eliminates float drift); per-tool defaults (`opengrok_execute`: 15 rpm) |
+| Sandbox isolation | QuickJS WASM VM — no filesystem, no network, method allowlist only; 62 s timeout, 8 MB buffer |
+| Audit logs | Injection-escaped structured audit entries |
 
-> **⚠️ v7.0.0 Breaking Changes**
-> - `OPENGROK_HTTP_CLIENT_ID` and `OPENGROK_HTTP_CLIENT_SECRET` removed. Migrate to `OPENGROK_JWKS_URI` + `OPENGROK_RESOURCE_URI` for OAuth 2.1 (resource server model — bring your own IdP).
-> - Memory bank `migrate()` removed — the legacy 6-file layout is no longer supported. The 2-file layout (`active-task.md` + `investigation-log.md`) has been the default since v5.4.
-> - CORS is now allowlist-only when `OPENGROK_ALLOWED_ORIGINS` is set; unauthenticated wildcard CORS is disabled.
+For the full security architecture (threat model, defense layers, hardening guide), see [SECURITY.md](SECURITY.md).
 
----
-
-## System Architecture
-
-<details>
-<summary>Show topological diagram</summary>
-
-```text
- [ AI Client ]                       [ Integration Layer ]                    [ Data Source ]
-                              │                                 │
- +---------------+            │       +-------------------+     │      +----------------------+
- │ GitHub        │<──(stdio)──┼──────>│ OpenGrok MCP      │<────┼─────>│ OpenGrok REST API &  │
- │ Copilot Chat  │            │       │ Server (Node.js)  │HTTP │      │ Web Interface        │
- +---------------+            │       +-------------------+     │      +----------------------+
-      │    ▲                           │          │
-      │    │ (Configures & Hosts)      │    (Context Optimization)
-      ▼    │                           │          │
- +---------------+                     │   o Context Fetch      │      +----------------------+
- │ VS Code       │                     │   o Multi-Search       │      │ Local File System    │
- │ Extension     │                     │   o Auto-Truncate      │<─────┤ (compile_commands) │
- +---------------+                     │                        │      +----------------------+
-```
-
-The underlying code is completely packaged in the marketplace extension via `esbuild`. The server uses standard VS Code Node APIs without external VM requirements.
+**Sandbox trust recommendation:** When configuring OpenGrok MCP in VS Code's MCP settings, you may set `sandboxEnabled: true` which auto-approves tool calls without confirmation prompts. This is safe because all tool execution occurs inside the QuickJS WASM sandbox with no host access — the LLM cannot execute arbitrary system commands through this server.
 
 </details>
 
 ---
 
-## Building & Testing
+## VS Code Integration
 
-```bash
-# Initializing
-npm install
+| Command | Action |
+| ------- | ------ |
+| `OpenGrok: Open Configuration` | Interactive settings GUI |
+| `OpenGrok: Test Connection` | Validate API access and token validity |
+| `OpenGrok: Show Server Logs` | Expose background process stdout/stderr |
+| `OpenGrok: Status Menu` | Quick-access status menu from the status bar |
+| `OpenGrok: Check for Updates` | Manually trigger an update check |
 
-# Code Quality & Tests
-npm run lint           # Strict TypeScript & ESLint validation
-npm test               # Execute the Vitest test suite (1113 tests)
-npm run test:sandbox   # Sandbox integration tests (requires compile first)
-npm run test:coverage  # Coverage report (≥89% threshold)
+> [!NOTE]
+> VS Code manages tool authorizations per workspace. If you open a different repository, re-check the OpenGrok box in the Copilot tools panel.
 
-# Packaging
-npm run compile   # Generate the esbuild artifact (includes sandbox-worker.js)
-npm run vsix      # Create the downloadable extension file
-```
-
-We leverage GitHub Actions for automated CD. Tagging a commit (e.g., `v1.2.3`) automatically triggers the build matrix and attaches artifacts to a new [GitHub Release](https://github.com/IcyHot09/opengrok-mcp-server/releases).
-
-For deep-dives into the architecture or PR guidelines, please read [CONTRIBUTING.md](CONTRIBUTING.md).
+The configuration panel and VS Code Settings UI cover the same settings: use the panel for guided setup, secrets, testing, and reload prompts. Use `opengrok-mcp.*` settings in `settings.json` for workspace overrides, Settings Sync, and scripted defaults. Code Mode is recommended; disabling it uses legacy standard tools and excludes new Code Mode-only capabilities.
 
 ---
 
-## Troubleshooting & Support
+## Troubleshooting
 
-**The MCP tools are missing in Copilot Chat**
-* Click the paperclip (`🔧`) icon to "Update Tools"
-* Run `Developer: Reload Window`
+> [!TIP]
+> Run `opengrok-mcp status` to check connectivity and confirm which MCP clients are configured.
 
-**"Connection failed" errors**
-* Double-check your `OPENGROK_BASE_URL`
-* Make sure you aren't blocked by corporate VPNs/proxies
+> [!WARNING]
+> After reloading VS Code or updating the extension, tools may temporarily disappear from the Copilot tools list. Click the tools icon, select "Update Tools", then run `Developer: Reload Window` to restore them.
 
-**401 Unauthorized / Authentication failing**
-* Run the `OpenGrok: Configure Credentials` command to save your username/password again
+**Connection failed** — Verify `OPENGROK_BASE_URL`. Check that your VPN or proxy is not blocking the endpoint.
 
-**Self-Signed SSL Certificates**
-* Turn off strict validation by setting `opengrok-mcp.verifySsl` to `false`
+**401 Unauthorized** — Run `OpenGrok: Open Configuration` to re-enter credentials.
 
-**Slow queries or timeouts**
-* Limit the scope using the `file_type` argument or targeting a specific project
-* OpenGrok might be indexing; run `opengrok_index_health`
+**Self-signed SSL certificate errors** — Set `opengrok-mcp.verifySsl` to `false` in VS Code settings, or `OPENGROK_VERIFY_SSL=false` in your MCP client config.
 
-**Need verbose logs?**
-* Set the environment variable `OPENGROK_LOG_LEVEL=debug` to get extensive stdout trace data
+**Slow queries or timeouts** — Narrow the scope with `file_type` filtering or target a specific project. Check indexing status with `opengrok_index_health`.
 
-### OpenGrok Version Compatibility
+**Verbose logging** — Set `OPENGROK_LOG_LEVEL=debug`.
 
-| OpenGrok Engine | Status | known limitations |
-| ---------------- | ------------- | ----- |
-| **v1.13.x and above** | Native Support | None (Full REST API functionality) |
-| **v1.7.0 — v1.12.x** | Legacy Mode | Uses HTML scraping for symbol lookups and blame |
-| **Below v1.7.0** | Unsupported | Unpredictable behaviour |
+### OpenGrok Compatibility
+
+| Engine version | Status | Notes |
+| -------------- | ------ | ----- |
+| v1.13.x and above | Supported | Full REST API |
+| v1.7.0 — v1.12.x | Legacy mode | HTML scraping for symbols and blame |
+| Below v1.7.0 | Unsupported | Unpredictable behaviour |
+
+---
+
+## Going Further
+
+[Client Setup](MCP_CLIENTS.md) · [Architecture](ENGINEERING.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
 ---
 
@@ -525,7 +488,7 @@ This system is distributed under the [PolyForm Noncommercial License 1.0.0](LICE
 * ❌ **Prohibited:** Any commercial, business, enterprise, or paid utilization
 
 **Commercial Licensing:**
-To use this extension in an enterprise context (internal tooling, CI pipelines, business infrastructure), a commercial license is strictly required. 
+To use this extension in an enterprise context (internal tooling, CI pipelines, business infrastructure), a commercial license is strictly required.
 Reach out to [rudroy09@gmail.com](mailto:rudroy09@gmail.com) for enterprise tier pricing.
 
 Read [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) for full terms.

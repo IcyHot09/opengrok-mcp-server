@@ -7,8 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { executeInSandbox } from '../server/sandbox.js';
-import type { SandboxAPI } from '../server/sandbox.js';
+import { executeInSandbox } from '../server/sandbox/index.js';
+import type { SandboxAPI } from '../server/sandbox/index.js';
 
 // ---------------------------------------------------------------------------
 // Mock SandboxAPI
@@ -30,6 +30,7 @@ function makeMockApi(overrides: Partial<SandboxAPI> = {}): SandboxAPI {
     async searchSuggest() { return { suggestions: [] }; },
     async getCompileInfo() { return null; },
     async indexHealth() { return { connected: true, latencyMs: 1, baseUrl: '' }; },
+    async getFileDiff() { return {}; },
     async readMemory(filename: string) { return `content of ${filename}`; },
     async writeMemory() { return 'written'; },
     async elicit() { return { action: 'cancel' as const }; },
@@ -83,11 +84,36 @@ describe('executeInSandbox', () => {
     expect(result).toBe('a.cpp');
   }, 15_000);
 
+  it('5b. flat search() global matches env.opengrok.search()', async () => {
+    const code = `
+      const r = search("handleCrash", { searchType: "refs", maxResults: 5 });
+      return r;
+    `;
+    const result = await executeInSandbox(code, makeMockApi(), identity, BUDGET);
+    const parsed = JSON.parse(result);
+    expect(parsed.results[0].path).toBe('test.cpp');
+  }, 15_000);
+
+  it('5c. flat + namespaced forms can mix in one execution', async () => {
+    const code = `
+      const a = search("x", {});
+      const b = env.opengrok.readMemory('symbol-index.md');
+      return (a.totalCount === 1 && b.includes('symbol-index.md')) ? 'mixed-ok' : 'mixed-fail';
+    `;
+    const result = await executeInSandbox(code, makeMockApi(), identity, BUDGET);
+    expect(result).toBe('mixed-ok');
+  }, 15_000);
+
   it('6. infinite loop → timeout error message', async () => {
-    const result = await executeInSandbox('while(true){}', makeMockApi(), identity, BUDGET);
+    // No QuickJS executionTimeout in the worker (wall-clock interrupt corrupts
+    // pooled heaps) — infinite loops are caught by the hardTimeout kill.
+    // Use a short hardTimeout so the test stays fast (default is 62s).
+    const result = await executeInSandbox('while(true){}', makeMockApi(), identity, BUDGET, undefined, {
+      hardTimeout: 5_000,
+    });
     expect(result).toMatch(/timed? ?out|timeout/i);
     expect(result.toLowerCase()).toContain('error');
-  }, 15_000);
+  }, 10_000);
 
   it('7. syntax error → error message with description', async () => {
     const result = await executeInSandbox('const x = }{{{;', makeMockApi(), identity, BUDGET);

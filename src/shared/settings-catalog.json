@@ -1,0 +1,574 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "general",
+      "title": "General",
+      "description": "Credentials and project defaults."
+    },
+    {
+      "id": "features",
+      "title": "Features",
+      "description": "Mode, search behavior, sampling, and AI output tuning."
+    },
+    {
+      "id": "network",
+      "title": "Network",
+      "description": "Server address, TLS, proxy, rate limiting, and timeouts."
+    },
+    {
+      "id": "advanced",
+      "title": "Advanced",
+      "description": "File paths, logging, and rarely-changed options."
+    }
+  ],
+  "fields": [
+    {
+      "id": "username",
+      "category": "general",
+      "label": "Username",
+      "description": "OpenGrok login username (blank for anonymous)",
+      "type": "string",
+      "default": "",
+      "required": true,
+      "env": "OPENGROK_USERNAME",
+      "vscodeKey": "opengrok-mcp.username",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 1
+    },
+    {
+      "id": "password",
+      "category": "general",
+      "label": "Password",
+      "description": "Stored securely in the OS keychain",
+      "type": "password",
+      "default": "",
+      "secret": true,
+      "surfaces": [
+        "cli",
+        "webview"
+      ],
+      "order": 2
+    },
+    {
+      "id": "codeMode",
+      "category": "features",
+      "label": "Code Mode",
+      "description": "Sandboxed JavaScript runtime for multi-step investigations (recommended)",
+      "type": "boolean",
+      "default": true,
+      "env": "OPENGROK_CODE_MODE",
+      "vscodeKey": "opengrok-mcp.codeMode",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 1
+    },
+    {
+      "id": "enableMemoryTools",
+      "category": "features",
+      "label": "Memory tools",
+      "description": "Persistent investigation notes across sessions (adds 3 Code Mode tools; off = api + execute only)",
+      "type": "boolean",
+      "default": false,
+      "env": "OPENGROK_ENABLE_MEMORY_TOOLS",
+      "vscodeKey": "opengrok-mcp.enableMemoryTools",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 2
+    },
+    {
+      "id": "enableElicitation",
+      "category": "features",
+      "label": "Interactive AI prompts",
+      "description": "Allow the AI to pause and ask questions during investigations",
+      "type": "boolean",
+      "default": true,
+      "env": "OPENGROK_ENABLE_ELICITATION",
+      "vscodeKey": "opengrok-mcp.enableElicitation",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 3
+    },
+    {
+      "id": "memoryBankDir",
+      "category": "features",
+      "label": "Investigation notes location",
+      "description": "Directory for memory-bank investigation files (blank = workspace default)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_MEMORY_BANK_DIR",
+      "vscodeKey": "opengrok-mcp.memoryBankDir",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 4,
+      "placeholder": "Workspace default",
+      "visibleWhen": {
+        "field": "enableMemoryTools",
+        "value": true
+      }
+    },
+    {
+      "id": "contextBudget",
+      "category": "features",
+      "label": "Response detail",
+      "description": "How much context the AI receives per tool response",
+      "type": "enum",
+      "default": "standard",
+      "env": "OPENGROK_CONTEXT_BUDGET",
+      "vscodeKey": "opengrok-mcp.contextBudget",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 5,
+      "options": [
+        {
+          "value": "minimal",
+          "label": "Compact (8 KB)",
+          "description": "Fewer tokens, lower detail."
+        },
+        {
+          "value": "standard",
+          "label": "Standard (16 KB)",
+          "description": "Balanced, recommended."
+        },
+        {
+          "value": "generous",
+          "label": "Detailed (32 KB)",
+          "description": "More context, more tokens."
+        }
+      ]
+    },
+    {
+      "id": "enableSampling",
+      "category": "features",
+      "label": "AI sampling",
+      "description": "Allow server-initiated LLM calls for error explanations and summaries",
+      "type": "boolean",
+      "default": false,
+      "env": "OPENGROK_ENABLE_SAMPLING",
+      "vscodeKey": "opengrok-mcp.enableSampling",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 6
+    },
+    {
+      "id": "samplingModel",
+      "category": "features",
+      "label": "Sampling model",
+      "description": "Preferred model for sampling (blank = client default)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_SAMPLING_MODEL",
+      "vscodeKey": "opengrok-mcp.samplingModel",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 7,
+      "placeholder": "Client default",
+      "visibleWhen": {
+        "field": "enableSampling",
+        "value": true
+      }
+    },
+    {
+      "id": "samplingMaxTokens",
+      "category": "features",
+      "label": "Sampling token budget",
+      "description": "Maximum tokens per sampling response (64-4096)",
+      "type": "integer",
+      "default": 256,
+      "env": "OPENGROK_SAMPLING_MAX_TOKENS",
+      "vscodeKey": "opengrok-mcp.samplingMaxTokens",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 8,
+      "minimum": 64,
+      "maximum": 4096,
+      "visibleWhen": {
+        "field": "enableSampling",
+        "value": true
+      }
+    },
+    {
+      "id": "enableObservationMasker",
+      "category": "features",
+      "label": "Observation masker",
+      "description": "Prepend compact history summaries after the full-text window fills",
+      "type": "boolean",
+      "default": false,
+      "env": "OPENGROK_ENABLE_OBSERVATION_MASKER",
+      "vscodeKey": "opengrok-mcp.enableObservationMasker",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 9
+    },
+    {
+      "id": "observationMaskerTurns",
+      "category": "features",
+      "label": "Full-text window",
+      "description": "Recent results to keep in full before summarizing older ones",
+      "type": "integer",
+      "default": 10,
+      "env": "OPENGROK_OBSERVATION_MASKER_TURNS",
+      "vscodeKey": "opengrok-mcp.observationMaskerTurns",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 10,
+      "minimum": 1,
+      "visibleWhen": {
+        "field": "enableObservationMasker",
+        "value": true
+      }
+    },
+    {
+      "id": "enableFilesApi",
+      "category": "features",
+      "label": "Files API cache",
+      "description": "Avoid re-uploading unchanged investigation notes to the AI",
+      "type": "boolean",
+      "default": false,
+      "env": "OPENGROK_ENABLE_FILES_API",
+      "vscodeKey": "opengrok-mcp.enableFilesApi",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 11
+    },
+    {
+      "id": "baseUrl",
+      "category": "network",
+      "label": "OpenGrok URL",
+      "description": "OpenGrok server address (include trailing slash)",
+      "type": "url",
+      "default": "",
+      "env": "OPENGROK_BASE_URL",
+      "vscodeKey": "opengrok-mcp.baseUrl",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 1,
+      "placeholder": "https://opengrok.example.com/source/"
+    },
+    {
+      "id": "verifySsl",
+      "category": "network",
+      "label": "Verify TLS certificates",
+      "description": "Validate server TLS certificates (disable only for self-signed certs)",
+      "type": "boolean",
+      "default": true,
+      "env": "OPENGROK_VERIFY_SSL",
+      "vscodeKey": "opengrok-mcp.verifySsl",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 2
+    },
+    {
+      "id": "proxy",
+      "category": "network",
+      "label": "HTTP proxy",
+      "description": "Route requests through a proxy server (blank for direct)",
+      "type": "string",
+      "default": "",
+      "env": "HTTP_PROXY",
+      "vscodeKey": "opengrok-mcp.proxy",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 3,
+      "placeholder": "http://proxy:8080"
+    },
+    {
+      "id": "rateLimitRpm",
+      "category": "network",
+      "label": "Rate limit",
+      "description": "Maximum requests per minute sent to OpenGrok",
+      "type": "integer",
+      "default": 60,
+      "env": "OPENGROK_RATELIMIT_RPM",
+      "vscodeKey": "opengrok-mcp.rateLimitRpm",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 4,
+      "minimum": 1
+    },
+    {
+      "id": "timeout",
+      "category": "network",
+      "label": "Timeout",
+      "description": "HTTP request timeout in seconds",
+      "type": "integer",
+      "default": 30,
+      "env": "OPENGROK_TIMEOUT",
+      "vscodeKey": "opengrok-mcp.timeout",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 5,
+      "minimum": 1
+    },
+    {
+      "id": "apiVersion",
+      "category": "advanced",
+      "label": "API version",
+      "description": "OpenGrok REST API version",
+      "type": "enum",
+      "default": "v1",
+      "env": "OPENGROK_API_VERSION",
+      "vscodeKey": "opengrok-mcp.apiVersion",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 1,
+      "options": [
+        {
+          "value": "v1",
+          "label": "v1",
+          "description": "Compatible with all OpenGrok versions."
+        },
+        {
+          "value": "v2",
+          "label": "v2",
+          "description": "Required for call graph features."
+        }
+      ]
+    },
+    {
+      "id": "defaultProject",
+      "category": "advanced",
+      "label": "Default project",
+      "description": "Scope searches to one project by default (blank = all projects)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_DEFAULT_PROJECT",
+      "vscodeKey": "opengrok-mcp.defaultProject",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 2
+    },
+    {
+      "id": "responseFormatOverride",
+      "category": "advanced",
+      "label": "Response format",
+      "description": "Override how search results are formatted for the AI",
+      "type": "enum",
+      "default": "",
+      "env": "OPENGROK_RESPONSE_FORMAT_OVERRIDE",
+      "vscodeKey": "opengrok-mcp.responseFormatOverride",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 3,
+      "options": [
+        {
+          "value": "",
+          "label": "Auto",
+          "description": "Let each tool choose the best format."
+        },
+        {
+          "value": "tsv",
+          "label": "TSV",
+          "description": "Compact tabular format."
+        },
+        {
+          "value": "toon",
+          "label": "TOON",
+          "description": "Token-optimized notation."
+        },
+        {
+          "value": "markdown",
+          "label": "Markdown",
+          "description": "Verbose but readable."
+        },
+        {
+          "value": "json",
+          "label": "JSON",
+          "description": "Programmatic use."
+        },
+        {
+          "value": "yaml",
+          "label": "YAML",
+          "description": "Hierarchical data."
+        },
+        {
+          "value": "text",
+          "label": "Text",
+          "description": "Raw code, no framing."
+        }
+      ]
+    },
+    {
+      "id": "compileDbPaths",
+      "category": "advanced",
+      "label": "C/C++ compile commands",
+      "description": "Paths to compile_commands.json (comma-separated, blank = auto)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_LOCAL_COMPILE_DB_PATHS",
+      "vscodeKey": "opengrok-mcp.compileDbPaths",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 4,
+      "placeholder": "Auto-discover"
+    },
+    {
+      "id": "auditLogFile",
+      "category": "advanced",
+      "label": "Audit log file",
+      "description": "Append structured audit events to a file (blank = disabled)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_AUDIT_LOG_FILE",
+      "vscodeKey": "opengrok-mcp.auditLogFile",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 5,
+      "placeholder": "Disabled"
+    },
+    {
+      "id": "defaultMaxResults",
+      "category": "advanced",
+      "label": "Default max results",
+      "description": "Maximum results returned per search query",
+      "type": "integer",
+      "default": 25,
+      "env": "OPENGROK_DEFAULT_MAX_RESULTS",
+      "vscodeKey": "opengrok-mcp.defaultMaxResults",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 6,
+      "minimum": 1
+    },
+    {
+      "id": "maxResponseBytes",
+      "category": "advanced",
+      "label": "Max response bytes",
+      "description": "Hard cap on response payload size (0 = use context budget)",
+      "type": "integer",
+      "default": 0,
+      "env": "OPENGROK_MAX_RESPONSE_BYTES",
+      "vscodeKey": "opengrok-mcp.maxResponseBytes",
+      "surfaces": [
+        "cli",
+        "vscode",
+        "webview"
+      ],
+      "order": 7,
+      "minimum": 0
+    },
+    {
+      "id": "passwordFile",
+      "category": "advanced",
+      "label": "Password file",
+      "description": "File-mounted secret for containers (blank = OS keychain)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_PASSWORD_FILE",
+      "surfaces": [
+        "cli"
+      ],
+      "order": 8,
+      "placeholder": "/run/secrets/opengrok-password"
+    },
+    {
+      "id": "strictSsrf",
+      "category": "advanced",
+      "label": "Strict request filtering",
+      "description": "Reject server addresses that resolve to private or loopback IPs",
+      "type": "boolean",
+      "default": false,
+      "env": "OPENGROK_STRICT_SSRF",
+      "surfaces": [
+        "cli"
+      ],
+      "order": 9
+    },
+    {
+      "id": "jwtIssuer",
+      "category": "advanced",
+      "label": "JWT issuer",
+      "description": "Expected JWT issuer for HTTP transport auth (blank = accept any)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_JWT_ISSUER",
+      "surfaces": [
+        "cli"
+      ],
+      "order": 10
+    },
+    {
+      "id": "grammarDir",
+      "category": "advanced",
+      "label": "Grammar directory",
+      "description": "Tree-sitter grammar directory (blank = bundled grammars)",
+      "type": "string",
+      "default": "",
+      "env": "OPENGROK_GRAMMAR_DIR",
+      "surfaces": [
+        "cli"
+      ],
+      "order": 11
+    }
+  ]
+}

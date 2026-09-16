@@ -8,8 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
   formatCompileInfo,
   formatSymbolContext,
-} from '../server/formatters.js';
-import type { SymbolContextResult } from '../server/formatters.js';
+} from '../server/formatters/index.js';
+import type { SymbolContextResult } from '../server/formatters/index.js';
 import type { CompileInfo } from '../server/local/compile-info.js';
 
 // -----------------------------------------------------------------------

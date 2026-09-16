@@ -3,13 +3,22 @@
  * buildSafeUrl, assertSafePath, parseSearchResponse, TTLCache, RateLimiter.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Production code calls fetch from 'undici' (same package as the Agent
+// dispatcher — the global fetch rejects cross-version dispatchers).
+// Mock it here; keep real Agent/ProxyAgent via importOriginal.
+const fetchMock = vi.hoisted(() => vi.fn());
+vi.mock('undici', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return { ...actual, fetch: (...args: unknown[]) => fetchMock(...args) };
+});
 import {
   OpenGrokClient,
   extractLineRange,
   buildSafeUrl,
   assertSafePath,
   parseSearchResponse,
-} from '../server/client.js';
+} from '../server/client/index.js';
 import type { Config } from '../server/config.js';
 
 // -----------------------------------------------------------------------
@@ -303,15 +312,16 @@ describe('OpenGrokClient constructor', () => {
 
 describe('OpenGrokClient methods', () => {
   let client: OpenGrokClient;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     client = new OpenGrokClient(makeConfig());
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchSpy = fetchMock;
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    fetchMock.mockReset();
   });
 
   function mockFetchJSON(data: unknown, status = 200) {
@@ -722,15 +732,16 @@ describe('OpenGrokClient methods', () => {
 
 describe('OpenGrokClient caching', () => {
   let client: OpenGrokClient;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     client = new OpenGrokClient(makeConfig({ OPENGROK_CACHE_ENABLED: true }));
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchSpy = fetchMock;
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    fetchMock.mockReset();
   });
 
   it('caches search results (second call returns same object)', async () => {
@@ -768,15 +779,16 @@ describe('OpenGrokClient caching', () => {
 
 describe('OpenGrokClient redirect handling', () => {
   let client: OpenGrokClient;
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     client = new OpenGrokClient(makeConfig());
-    fetchSpy = vi.spyOn(globalThis, 'fetch');
+    fetchMock.mockReset();
+    fetchSpy = fetchMock;
   });
 
   afterEach(() => {
-    fetchSpy.mockRestore();
+    fetchMock.mockReset();
   });
 
   it('follows same-host redirects', async () => {

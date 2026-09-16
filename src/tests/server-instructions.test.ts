@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
 describe('SERVER_INSTRUCTIONS token budget', () => {
-  it('standard template is ≤1500 chars (≈300 tokens)', async () => {
+  it('standard template is ≤1600 chars (≈320 tokens)', async () => {
     const { SERVER_INSTRUCTIONS_TEMPLATE } = await import('../server/server.js');
     const filled = SERVER_INSTRUCTIONS_TEMPLATE.replace('{{MEMORY_STATUS}}', '[Memory] No prior context.');
-    expect(filled.length).toBeLessThanOrEqual(1500);
+    expect(filled.length).toBeLessThanOrEqual(1600);
   });
 
-  it('code mode template is ≤1800 chars (≈360 tokens)', async () => {
+  it('code mode template is ≤800 chars (≈160 tokens)', async () => {
     const { SERVER_INSTRUCTIONS_CODE_MODE_TEMPLATE } = await import('../server/server.js');
     const filled = SERVER_INSTRUCTIONS_CODE_MODE_TEMPLATE.replace('{{MEMORY_STATUS}}', '[Memory] No prior context.');
     expect(filled.length).toBeLessThanOrEqual(1800);

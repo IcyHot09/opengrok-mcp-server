@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { FileReferenceCache, simpleHash } from '../server/file-cache.js';
+import { FileReferenceCache, simpleHash } from '../server/utils/file-cache.js';
 
 describe('FileReferenceCache', () => {
   let cache: FileReferenceCache;

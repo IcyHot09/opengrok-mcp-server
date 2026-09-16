@@ -8,12 +8,12 @@
     "url": "https://github.com/IcyHot09/opengrok-mcp-server",
     "source": "github"
   },
-  "version": "9.2.13",
+  "version": "9.6.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "opengrok-mcp-server",
-      "version": "9.2.13",
+      "version": "9.6.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -51,11 +51,19 @@
         },
         {
           "name": "OPENGROK_CODE_MODE",
-          "description": "Enable Code Mode: 5-tool sandbox interface with env.opengrok.* JavaScript API. Reduces AI token usage by ~90%.",
+          "description": "Enable Code Mode: 2-tool sandbox interface with env.opengrok.* JavaScript API. Reduces AI token usage by ~90%.",
           "format": "boolean",
           "isRequired": false,
           "isSecret": false,
           "default": "true"
+        },
+        {
+          "name": "OPENGROK_ENABLE_MEMORY_TOOLS",
+          "description": "Register the 3 memory tools in Code Mode (memory status, read, update). Off = api + execute only.",
+          "format": "boolean",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "false"
         },
         {
           "name": "OPENGROK_DEFAULT_PROJECT",
@@ -131,7 +139,7 @@
           "format": "boolean",
           "isRequired": false,
           "isSecret": false,
-          "default": "false"
+          "default": "true"
         },
         {
           "name": "OPENGROK_ENABLE_SAMPLING",
@@ -194,6 +202,72 @@
           "isRequired": false,
           "isSecret": false,
           "default": "60"
+        },
+        {
+          "name": "OPENGROK_PER_TOOL_RATELIMIT",
+          "description": "Per-tool rate limits in requests per minute, as comma-separated tool:rpm pairs (e.g. opengrok_execute:15,opengrok_search_code:30). Overrides OPENGROK_RATELIMIT_RPM for specific tools.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENGROK_TIMEOUT",
+          "description": "HTTP request timeout in seconds for OpenGrok API calls. Increase for slow servers. Default: 30.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "30"
+        },
+        {
+          "name": "OPENGROK_DEFAULT_MAX_RESULTS",
+          "description": "Default maximum number of results returned per search query. Default: 25.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "25"
+        },
+        {
+          "name": "OPENGROK_PASSWORD_FILE",
+          "description": "Path to a file containing the OpenGrok password (file-mounted secret for containers). Takes precedence over the OS keychain when OPENGROK_PASSWORD is unset.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENGROK_MAX_RESPONSE_BYTES",
+          "description": "Hard cap on response payload size in bytes. Overrides the context-budget default. Non-positive values are ignored.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENGROK_SEARCH_AND_READ_CAP",
+          "description": "Cap for the search_and_read compound tool in bytes. Overrides the context-budget default (2–8 KB depending on tier). Non-positive values are ignored.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENGROK_STRICT_SSRF",
+          "description": "When true, reject OPENGROK_BASE_URL values pointing at private/loopback IPs at startup. Default: false (warn only; per-request guards still apply).",
+          "format": "boolean",
+          "isRequired": false,
+          "isSecret": false,
+          "default": "false"
+        },
+        {
+          "name": "OPENGROK_JWT_ISSUER",
+          "description": "Expected JWT issuer (iss claim) for HTTP transport OAuth. When set, JWTs from other issuers are rejected.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "OPENGROK_GRAMMAR_DIR",
+          "description": "Directory containing tree-sitter WASM grammars. Overrides the bundled grammar lookup.",
+          "format": "string",
+          "isRequired": false,
+          "isSecret": false
         }
       ]
     }

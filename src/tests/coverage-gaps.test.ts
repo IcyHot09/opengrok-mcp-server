@@ -12,12 +12,12 @@ import {
   formatDirectoryListing,
   formatAnnotate,
   formatFileHistory,
-} from '../server/formatters.js';
+} from '../server/formatters/index.js';
 import {
   parseProjectsPage,
   parseDirectoryListing,
   parseWebSearchResults,
-} from '../server/parsers.js';
+} from '../server/parsers/index.js';
 import {
   discoverCompileCommands,
   parseCompileCommands,
@@ -632,7 +632,7 @@ describe('BlameArgs superRefine validation', () => {
 // ---------------------------------------------------------------------------
 // audit.ts — appendFileSync error fallback branch (lines 69-72)
 // ---------------------------------------------------------------------------
-import { auditLog, configureAuditLog, getAuditWriteQueue } from '../server/audit.js';
+import { auditLog, configureAuditLog, getAuditWriteQueue } from '../server/transport/audit.js';
 
 describe('auditLog file write error fallback', () => {
   afterEach(() => {

@@ -4,6 +4,15 @@
  * rate limiting, auth headers, search/file method branches.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Production code calls fetch from 'undici' (same package as the Agent
+// dispatcher — the global fetch rejects cross-version dispatchers).
+// Mock it here; keep real Agent/ProxyAgent via importOriginal.
+const fetchMock = vi.hoisted(() => vi.fn());
+vi.mock('undici', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('undici')>();
+  return { ...actual, fetch: (...args: unknown[]) => fetchMock(...args) };
+});
 import {
   OpenGrokClient,
   _RateLimiter as RateLimiter,
@@ -11,7 +20,7 @@ import {
   _estimateBytes as estimateBytes,
   _sleep as sleep,
   _TIMEOUTS as TIMEOUTS,
-} from '../server/client.js';
+} from '../server/client/index.js';
 import type { Config } from '../server/config.js';
 
 // -----------------------------------------------------------------------
@@ -45,10 +54,11 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
   } as Config;
 }
 
-let fetchSpy: ReturnType<typeof vi.spyOn>;
+let fetchSpy: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
-  fetchSpy = vi.spyOn(globalThis, 'fetch');
+  fetchMock.mockReset();
+  fetchSpy = fetchMock;
 });
 
 afterEach(() => {

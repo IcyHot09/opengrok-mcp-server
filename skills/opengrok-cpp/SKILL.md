@@ -119,8 +119,7 @@ Find template specializations by searching for both the class name and angle bra
       { "query": "ClassName", "search_type": "defs" },
       { "query": "template<>", "search_type": "full" }
     ],
-    "file_type": "cxx",
-    "max_results": 15
+    "file_type": "cxx"
   }
 }
 ```
@@ -252,8 +251,7 @@ and search for its includes, then search for includes of those files:
       { "query": "#include \"module_b.h\"", "search_type": "full" },
       { "query": "#include \"module_c.h\"", "search_type": "full" }
     ],
-    "file_type": "cxx",
-    "max_results": 15
+    "file_type": "cxx"
   }
 }
 ```
@@ -267,13 +265,41 @@ and language standard for a source file (requires local `compile_commands.json`)
 {
   "tool": "opengrok_get_compile_info",
   "arguments": {
-    "project": "myproject",
     "path": "src/main.cpp"
   }
 }
 ```
 
 Returns `-I` include paths, `-D` defines, `-std` version, and full compiler flags.
+
+## Call Chain Tracing
+
+### Who calls this function?
+
+```javascript
+// Callers via refs search; callees via tree-sitter AST (C++ fully supported)
+const callers = env.opengrok.traceCallChain('handleCrash', { direction: 'callers', depth: 2 });
+return callers;
+```
+
+### Bidirectional trace (callers + callees)
+
+```javascript
+const chain = env.opengrok.traceCallChain('processEvent', { direction: 'both', depth: 1 });
+return { callers: chain.callers, callees: chain.callees };
+```
+
+Callees direction uses tree-sitter AST analysis — for C/C++ it returns real
+callee results, not empty. `caller.symbol` is the enclosing function name when
+resolvable, otherwise `path:line`.
+
+### Expand matches to enclosing functions
+
+```javascript
+// Inline the enclosing function body for the top matches — saves a read call
+const r = env.opengrok.search('handleCrash', { searchType: 'refs', fileType: 'cxx', expandFunction: true });
+return r.results.slice(0, 3).map(x => x.functionContext ?? x.matches[0]?.content);
+```
 
 ## Error Pattern Navigation
 
@@ -461,7 +487,8 @@ return implementations;
 ### 1. `file_type: cxx` vs `cpp`
 
 OpenGrok uses `cxx` for C++ files (not `cpp`). Always use `file_type: "cxx"` when
-filtering to C++ code.
+filtering to C++ code. Aliases (`cpp`, `c++`, `h`, `hpp`) are normalized to
+`cxx` automatically.
 
 ### 2. Templates are not functions
 

@@ -9,7 +9,7 @@ import {
   exportAuditLogAsJSON,
   getAuditWriteQueue,
   resetDroppedAuditEventCount,
-} from '../server/audit.js';
+} from '../server/transport/audit.js';
 
 describe('auditLog', () => {
   let tmpFile: string;

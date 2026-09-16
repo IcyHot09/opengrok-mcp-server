@@ -89,7 +89,7 @@ describe('dispatchTool — opengrok_search_code', () => {
     const client = makeMockClient();
     client.search.mockResolvedValue({ query: 'x', searchType: 'full', totalCount: 0, results: [] });
     await dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', file_type: 'cxx' }, client as any, config, emptyLocal());
-    expect(client.search).toHaveBeenCalledWith('x', 'full', ['release-2.x'], 10, 0, 'cxx');
+    expect(client.search).toHaveBeenCalledWith('x', 'full', ['release-2.x'], 10, 0, 'cxx', undefined, undefined, undefined, undefined);
   });
 
   it('applies default project when projects not specified', async () => {
@@ -97,6 +97,44 @@ describe('dispatchTool — opengrok_search_code', () => {
     client.search.mockResolvedValue({ query: 'x', searchType: 'full', totalCount: 0, results: [] });
     await dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full' }, client as any, config, emptyLocal());
     expect(client.search.mock.calls[0][2]).toEqual(['release-2.x']);
+  });
+
+  it('dir maps to the pathFilter argument', async () => {
+    const client = makeMockClient();
+    client.search.mockResolvedValue({ query: 'x', searchType: 'full', totalCount: 0, results: [] });
+    await dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', dir: 'src/server' }, client as any, config, emptyLocal());
+    expect(client.search.mock.calls[0][8]).toBe('src/server');
+  });
+
+  it('path_filter wins over dir', async () => {
+    const client = makeMockClient();
+    client.search.mockResolvedValue({ query: 'x', searchType: 'full', totalCount: 0, results: [] });
+    await dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', path_filter: 'src/a', dir: 'src/b' }, client as any, config, emptyLocal());
+    expect(client.search.mock.calls[0][8]).toBe('src/a');
+  });
+
+  it('file dispatches to getAllMatchesInFile (no client.search)', async () => {
+    const client = makeMockClient();
+    client.getAllMatchesInFile = vi.fn().mockResolvedValue([{ lineNumber: 3, lineContent: 'x' }]);
+    const result = await dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', file: 'src/a.cpp' }, client as any, config, emptyLocal());
+    expect(client.getAllMatchesInFile).toHaveBeenCalledWith('release-2.x', '/src/a.cpp', 'x', 'full', 10);
+    expect(client.search).not.toHaveBeenCalled();
+    expect(result).toContain('src/a.cpp');
+  });
+
+  it('file without a project throws', async () => {
+    const client = makeMockClient();
+    client.getAllMatchesInFile = vi.fn();
+    const noDefault = makeConfig({ OPENGROK_DEFAULT_PROJECT: '' });
+    await expect(dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', file: 'a.cpp', projects: [] }, client as any, noDefault, emptyLocal())).rejects.toThrow(/requires a project/);
+  });
+
+  it('file + cursor is rejected as expired', async () => {
+    const client = makeMockClient();
+    client.getAllMatchesInFile = vi.fn();
+    const { encodeCursor } = await import('../server/pagination/cursor-codec.js');
+    const cursor = encodeCursor({ t: 'offset', v: 5, m: 'search' });
+    await expect(dispatchTool('opengrok_search_code', { query: 'x', search_type: 'full', file: 'a.cpp', cursor }, client as any, config, emptyLocal())).rejects.toThrow(/expired/i);
   });
 });
 
@@ -111,6 +149,15 @@ describe('dispatchTool — opengrok_find_file', () => {
     const result = await dispatchTool('opengrok_find_file', { path_pattern: 'main.cpp' }, client as any, config, emptyLocal());
     expect(client.search).toHaveBeenCalledWith('main.cpp', 'path', ['release-2.x'], 10, 0);
     expect(result).toBeDefined();
+  });
+
+  it('resolves a findFile cursor to a start offset (client is search-strict)', async () => {
+    const client = makeMockClient();
+    client.search.mockResolvedValue({ query: 'main.cpp', searchType: 'path', totalCount: 1, results: [] });
+    const { encodeCursor } = await import('../server/pagination/cursor-codec.js');
+    const cursor = encodeCursor({ t: 'offset', v: 7, m: 'findFile' });
+    await dispatchTool('opengrok_find_file', { path_pattern: 'main.cpp', cursor }, client as any, config, emptyLocal());
+    expect(client.search).toHaveBeenCalledWith('main.cpp', 'path', ['release-2.x'], 10, 7);
   });
 });
 
@@ -309,6 +356,37 @@ describe('dispatchTool — opengrok_batch_search', () => {
     expect(client.search).toHaveBeenCalledTimes(2);
     expect(result).toBeDefined();
   });
+
+  it('top-level dir applies to queries without their own filter', async () => {
+    const client = makeMockClient();
+    client.search.mockResolvedValue({ query: 'q', searchType: 'full', totalCount: 0, results: [] });
+    await dispatchTool('opengrok_batch_search', {
+      queries: [
+        { query: 'foo', search_type: 'full' },
+        { query: 'bar', search_type: 'full', dir: 'src/own' },
+      ],
+      dir: 'src/top',
+    }, client as any, config, emptyLocal());
+    expect(client.search.mock.calls[0][8]).toBe('src/top');
+    expect(client.search.mock.calls[1][8]).toBe('src/own');
+  });
+
+  it('per-query file and top-level file dispatch to getAllMatchesInFile', async () => {
+    const client = makeMockClient();
+    client.getAllMatchesInFile = vi.fn().mockResolvedValue([{ lineNumber: 1, lineContent: 'x' }]);
+    const result = await dispatchTool('opengrok_batch_search', {
+      queries: [
+        { query: 'foo', search_type: 'full', file: 'src/a.cpp' },
+        { query: 'bar', search_type: 'full' },
+      ],
+      file: 'src/default.cpp',
+    }, client as any, config, emptyLocal());
+    expect(client.getAllMatchesInFile).toHaveBeenCalledTimes(2);
+    expect(client.getAllMatchesInFile.mock.calls[0][1]).toBe('/src/a.cpp');
+    expect(client.getAllMatchesInFile.mock.calls[1][1]).toBe('/src/default.cpp');
+    expect(client.search).not.toHaveBeenCalled();
+    expect(result).toBeDefined();
+  });
 });
 
 // -----------------------------------------------------------------------
@@ -355,6 +433,23 @@ describe('dispatchTool — opengrok_search_and_read', () => {
     const call = client.getFileContent.mock.calls[0];
     expect(call[2]).toBe(30); // startLine
     expect(call[3]).toBe(70); // endLine
+  });
+
+  it('dir maps to the pathFilter argument', async () => {
+    const client = makeMockClient();
+    client.search.mockResolvedValue({ query: 'x', searchType: 'full', totalCount: 0, results: [] });
+    await dispatchTool('opengrok_search_and_read', { query: 'x', search_type: 'full', dir: 'src/only' }, client as any, config, emptyLocal());
+    expect(client.search.mock.calls[0][8]).toBe('src/only');
+  });
+
+  it('file restricts the read to a single file', async () => {
+    const client = makeMockClient();
+    client.getAllMatchesInFile = vi.fn().mockResolvedValue([{ lineNumber: 5, lineContent: 'x' }]);
+    client.getFileContent.mockResolvedValue({ project: 'release-2.x', path: 'src/f.cpp', content: 'ctx', lineCount: 1, sizeBytes: 3 });
+    const result = await dispatchTool('opengrok_search_and_read', { query: 'x', search_type: 'full', file: 'src/f.cpp' }, client as any, config, emptyLocal());
+    expect(client.getAllMatchesInFile).toHaveBeenCalledWith('release-2.x', '/src/f.cpp', 'x', 'full', 3);
+    expect(client.search).not.toHaveBeenCalled();
+    expect(result).toContain('src/f.cpp');
   });
 });
 

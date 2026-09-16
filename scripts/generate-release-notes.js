@@ -2,7 +2,7 @@
 /**
  * Generates the GitHub Release body for the given version.
  * Extracts the version's section from CHANGELOG.md and wraps it
- * in a formatted template mirroring the original GitLab release layout.
+ * in a formatted template mirroring the original release layout.
  *
  * Usage: node scripts/generate-release-notes.js <version> > release-body.md
  *        node scripts/generate-release-notes.js 3.3.2 > release-body.md

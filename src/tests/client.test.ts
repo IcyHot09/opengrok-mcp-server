@@ -65,7 +65,7 @@ describe('loadConfig', () => {
 // ---------------------------------------------------------------------------
 
 describe('path traversal detection', () => {
-  // Mirror the assertSafePath logic here for isolated unit testing
+  // Exercise the same path rules as assertSafePath here for isolated unit testing
   function isSafePath(path: string): boolean {
     const normalized = path.replace(/\\/g, '/');
     return !(
@@ -214,7 +214,7 @@ describe('config NaN guard', () => {
 // extractLineRange (indexOf-based extraction)
 // ---------------------------------------------------------------------------
 
-import { extractLineRange } from '../server/client.js';
+import { extractLineRange } from '../server/client/index.js';
 
 describe('extractLineRange', () => {
   const sampleContent = 'line1\nline2\nline3\nline4\nline5';
@@ -268,9 +268,46 @@ describe('extractLineRange', () => {
 });
 
 // ---------------------------------------------------------------------------
+// fileType allowlist (P1-1 — verified against OpenGrok AnalyzerGuru list)
+// ---------------------------------------------------------------------------
+import { normalizeFileType, validateFileType, VALID_FILE_TYPES } from '../server/client/index.js';
+
+describe('fileType allowlist', () => {
+  it('accepts genuine analyzer names (cobol, ocaml, mandoc, troff)', () => {
+    for (const t of ['cobol', 'ocaml', 'mandoc', 'troff', 'cxx', 'golang', 'sh']) {
+      expect(VALID_FILE_TYPES.has(t)).toBe(true);
+      expect(validateFileType(t)).toBe(t);
+    }
+  });
+
+  it('maps makefile → sh (Makefiles are indexed by the Sh analyzer)', () => {
+    expect(normalizeFileType('makefile')).toBe('sh');
+    expect(validateFileType('makefile')).toBe('sh');
+  });
+
+  it('keeps existing aliases (cpp→cxx, shell→sh)', () => {
+    expect(validateFileType('cpp')).toBe('cxx');
+    expect(validateFileType('shell')).toBe('sh');
+  });
+
+  it('still throws for unknown types', () => {
+    expect(() => validateFileType('notalang')).toThrow(/Invalid fileType/);
+  });
+
+  it('SearchCodeArgs file_type accepts makefile/cobol and rejects unknown', () => {
+    const ok = SearchCodeArgs.safeParse({ query: 'x', file_type: 'makefile' });
+    expect(ok.success).toBe(true);
+    if (ok.success) expect(ok.data.file_type).toBe('sh');
+    const ok2 = SearchCodeArgs.safeParse({ query: 'x', file_type: 'cobol' });
+    expect(ok2.success).toBe(true);
+    expect(SearchCodeArgs.safeParse({ query: 'x', file_type: 'notalang' }).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // TTLCache.evictExpired
 // ---------------------------------------------------------------------------
-import { TTLCache } from '../server/client.js';
+import { TTLCache } from '../server/client/index.js';
 
 describe('TTLCache.evictExpired', () => {
   it('removes entries older than TTL when eviction is triggered on the 10th write', () => {

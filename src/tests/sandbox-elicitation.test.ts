@@ -3,23 +3,23 @@
  * Elicit/sample/suggestions tests added in Tasks 2–5.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createSandboxAPI } from '../server/sandbox.js';
-import type { OpenGrokClient } from '../server/client.js';
-import type { MemoryBank } from '../server/memory-bank.js';
+import { createSandboxAPI } from '../server/sandbox/index.js';
+import type { OpenGrokClient } from '../server/client/index.js';
+import type { MemoryBank } from '../server/memory/memory-bank.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-vi.mock('../server/elicitation.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/elicitation.js')>();
+vi.mock('../server/protocol/elicitation.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/protocol/elicitation.js')>();
   return { ...original, elicitOrFallback: vi.fn() };
 });
 
-vi.mock('../server/sampling.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/sampling.js')>();
+vi.mock('../server/protocol/sampling.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/protocol/sampling.js')>();
   return { ...original, sampleOrNull: vi.fn() };
 });
 
-import { elicitOrFallback } from '../server/elicitation.js';
-import { sampleOrNull } from '../server/sampling.js';
+import { elicitOrFallback } from '../server/protocol/elicitation.js';
+import { sampleOrNull } from '../server/protocol/sampling.js';
 
 function makeMinimalClient(): OpenGrokClient {
   return {
@@ -300,41 +300,34 @@ describe('createSandboxAPI — search() zero-result _suggestions', () => {
 // Task 5: API_SPEC has elicit and sample entries
 // ---------------------------------------------------------------------------
 
-import { API_SPEC } from '../server/sandbox.js';
+import { API_SPEC, METHOD_SIGNATURES } from '../server/sandbox/index.js';
 
 describe('API_SPEC', () => {
-  it('has elicit method entry', () => {
-    expect(API_SPEC.methods).toHaveProperty('elicit');
-    const e = (API_SPEC.methods as Record<string, unknown>).elicit as Record<string, unknown>;
-    expect(e.signature).toContain('env.opengrok.elicit');
-    expect(e.returns).toContain('accept');
+  it('has elicit method signature', () => {
+    expect(API_SPEC).toContain('elicit(message: string, schema: ElicitSchema)');
+    expect(API_SPEC).toContain("'accept'");
+    expect(METHOD_SIGNATURES.elicit).toContain('elicit(');
   });
 
-  it('has sample method entry', () => {
-    expect(API_SPEC.methods).toHaveProperty('sample');
-    const s = (API_SPEC.methods as Record<string, unknown>).sample as Record<string, unknown>;
-    expect(s.signature).toContain('env.opengrok.sample');
-    expect(s.returns).toContain('null');
+  it('has sample method signature', () => {
+    expect(API_SPEC).toContain('sample(prompt: string');
+    expect(API_SPEC).toContain('string|null');
+    expect(METHOD_SIGNATURES.sample).toContain('sample(');
   });
 
-  it('has disambiguationExample', () => {
-    expect(API_SPEC).toHaveProperty('disambiguationExample');
-    expect(typeof (API_SPEC as Record<string, unknown>).disambiguationExample).toBe('string');
+  it('documents all 19 sandbox methods', () => {
+    for (const name of ['search', 'batchSearch', 'getFileContent', 'getSymbolContext',
+      'getFileSymbols', 'getFileHistory', 'getFileAnnotate', 'browseDir',
+      'findFile', 'getFileOverview', 'traceCallChain', 'searchSuggest',
+      'getCompileInfo', 'indexHealth', 'getFileDiff', 'readMemory',
+      'writeMemory', 'elicit', 'sample']) {
+      expect(METHOD_SIGNATURES[name], `missing signature ${name}`).toContain(`${name}(`);
+    }
   });
 
-  it('has zeroResultExample', () => {
-    expect(API_SPEC).toHaveProperty('zeroResultExample');
-    expect(typeof (API_SPEC as Record<string, unknown>).zeroResultExample).toBe('string');
-  });
-
-  it('important[] contains elicit guidance', () => {
-    const hasElicitGuidance = API_SPEC.important.some(line => line.includes('elicit()'));
-    expect(hasElicitGuidance).toBe(true);
-  });
-
-  it('important[] contains sample guidance', () => {
-    const hasSampleGuidance = API_SPEC.important.some(line => line.includes('sample()'));
-    expect(hasSampleGuidance).toBe(true);
+  it('documents cursor and expandFunction opts used by error hints', () => {
+    expect(API_SPEC).toContain('cursor?: string');
+    expect(API_SPEC).toContain('expandFunction?: boolean');
   });
 });
 
@@ -355,7 +348,7 @@ describe('createSandboxAPI — defaultProject', () => {
     });
     const api = createSandboxAPI(mockClient, makeMinimalMemoryBank(), { defaultProject: 'myproject' });
     await api.search('q');
-    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['myproject'], 5, 0, undefined);
+    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['myproject'], 5, 0, undefined, undefined, undefined, undefined);
   });
 
   it('search() does not override explicit projects array', async () => {
@@ -365,7 +358,7 @@ describe('createSandboxAPI — defaultProject', () => {
     });
     const api = createSandboxAPI(mockClient, makeMinimalMemoryBank(), { defaultProject: 'myproject' });
     await api.search('q', { projects: ['other'] });
-    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['other'], 5, 0, undefined);
+    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['other'], 5, 0, undefined, undefined, undefined, undefined);
   });
 
   it('search() does not override explicit empty array (search all)', async () => {
@@ -375,7 +368,7 @@ describe('createSandboxAPI — defaultProject', () => {
     });
     const api = createSandboxAPI(mockClient, makeMinimalMemoryBank(), { defaultProject: 'myproject' });
     await api.search('q', { projects: [] });
-    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', [], 5, 0, undefined);
+    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', [], 5, 0, undefined, undefined, undefined, undefined);
   });
 
   it('batchSearch() injects defaultProject when projects not specified', async () => {
@@ -385,7 +378,7 @@ describe('createSandboxAPI — defaultProject', () => {
     });
     const api = createSandboxAPI(mockClient, makeMinimalMemoryBank(), { defaultProject: 'myproject' });
     await api.batchSearch([{ query: 'q' }]);
-    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['myproject'], 5, 0, undefined);
+    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', ['myproject'], 5, 0, undefined, undefined, undefined, undefined);
   });
 
   it('getSymbolContext() injects defaultProject when projects not specified', async () => {
@@ -415,6 +408,6 @@ describe('createSandboxAPI — defaultProject', () => {
     });
     const api = createSandboxAPI(mockClient, makeMinimalMemoryBank(), {});
     await api.search('q');
-    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', undefined, 5, 0, undefined);
+    expect(mockClient.search).toHaveBeenCalledWith('q', 'full', undefined, 5, 0, undefined, undefined, undefined, undefined);
   });
 });

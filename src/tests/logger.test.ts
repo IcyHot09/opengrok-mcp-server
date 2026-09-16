@@ -2,7 +2,7 @@
  * Tests for logger.ts — ensure all log methods work as expected.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { logger } from '../server/logger.js';
+import { logger } from '../server/utils/logger.js';
 
 describe('logger', () => {
   const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

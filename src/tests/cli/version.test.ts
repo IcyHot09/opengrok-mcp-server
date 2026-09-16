@@ -7,7 +7,7 @@ describe('checkForUpdate (via status module)', () => {
     // Mock fetch to simulate network failure
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')));
 
-    vi.mock('../../server/client.js', () => ({
+    vi.mock('../../server/client/index.js', () => ({
       OpenGrokClient: vi.fn().mockImplementation(() => ({
         listProjects: vi.fn().mockResolvedValue([]),
       })),

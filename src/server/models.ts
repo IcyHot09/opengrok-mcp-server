@@ -24,6 +24,7 @@ export const SearchType = {
   FULL: "full",
   DEFS: "defs",
   REFS: "refs",
+  SYMBOL: "symbol",
   PATH: "path",
   HIST: "hist",
 } as const;
@@ -34,23 +35,73 @@ export type SearchTypeValue = (typeof SearchType)[keyof typeof SearchType];
 // Tool argument schemas (used for input validation in server.ts)
 // ---------------------------------------------------------------------------
 
-const FILE_TYPE_DESC = "Filter by language: c, cxx (C++), java, python, javascript, typescript, csharp, golang, ruby, perl, php, scala, kotlin, swift, rust, sql, xml, json, yaml, shell, makefile, etc.";
+const FILE_TYPE_DESC = "Filter by language (exact analyzer name). Common: c, cxx (C++), java, python, javascript, typescript, csharp (C#), golang (Go), ruby, perl, php, scala, kotlin, swift, rust, sh (shell), sql, xml, json. Aliases accepted: cpp/c++/h/hpp→cxx, go→golang, bash/shell→sh, js→javascript, ts→typescript, cs→csharp, rb→ruby, py→python, rs→rust.";
+
+/** Valid analyzer names (lowercased). Used for file_type validation. */
+const VALID_FILE_TYPES_LIST = [
+  "cxx", "c", "java", "javascript", "typescript", "csharp", "python",
+  "sh", "powershell", "golang", "rust", "kotlin", "scala", "sql", "plsql", "perl",
+  "ruby", "swift", "php", "xml", "json", "yaml", "hcl", "terraform", "plain",
+  "lua", "ada", "fortran", "r", "haskell", "clojure", "erlang", "lisp",
+  "tcl", "pascal", "eiffel", "asm", "vb", "verilog",
+  "cobol", "ocaml", "mandoc", "troff",
+] as const;
+
+const FILE_TYPE_ALIASES_MAP: Record<string, string> = {
+  cpp: "cxx", "c++": "cxx", h: "cxx", hpp: "cxx", hxx: "cxx", cc: "cxx",
+  go: "golang", shell: "sh", bash: "sh", zsh: "sh",
+  // Makefiles are indexed by the Sh analyzer — no separate Makefile analyzer exists.
+  makefile: "sh",
+  js: "javascript", ts: "typescript", cs: "csharp", rb: "ruby", py: "python", rs: "rust",
+};
+
+function normalizeFileTypeValue(v: string | undefined): string | undefined {
+  if (!v) return v;
+  return FILE_TYPE_ALIASES_MAP[v.toLowerCase()] ?? v;
+}
+
+const FileTypeField = z.string().optional().describe(FILE_TYPE_DESC)
+  .transform((v) => (v ? normalizeFileTypeValue(v) : v))
+  .refine(
+    (v) => !v || (VALID_FILE_TYPES_LIST as readonly string[]).includes(v.toLowerCase()),
+    { message: `Invalid fileType. Valid types: ${[...VALID_FILE_TYPES_LIST].sort().join(", ")}` }
+  );
+
+const SortField = z.enum(["relevancy", "lastmodtime", "fullpath"]).optional()
+  .describe("Sort order: relevancy (default), lastmodtime (newest first), fullpath (alphabetical)");
+
+const MaxHitsPerFileField = z.number().int().min(1).max(100).optional()
+  .describe("Limit matches returned per file. Useful when searching common terms to get diverse file coverage.");
+
+const PathFilterField = z.string().optional()
+  .describe("Restrict results to paths under this directory/prefix (e.g. 'src/server').");
+
+const CursorField = z.string().optional()
+  .describe("Pagination cursor from a previous response. Takes precedence over start_index when provided.");
 
 export const SearchCodeArgs = z.object({
   query: z.string().min(1, "query must not be empty").describe('Search query. Supports OpenGrok syntax: +required -excluded "exact phrase"'),
-  search_type: z.enum(["full", "defs", "refs", "path", "hist"]).default("full"),
+  search_type: z.enum(["full", "defs", "refs", "symbol", "path", "hist"]).default("full"),
   projects: z.array(z.string()).optional().describe("Filter by project names. Omit to use the server default project."),
   max_results: z.number().int().min(1).max(100).default(10),
   start_index: z.number().int().min(0).default(0),
-  file_type: z.string().optional().describe(FILE_TYPE_DESC),
+  file_type: FileTypeField,
+  sort: SortField,
+  max_hits_per_file: MaxHitsPerFileField,
+  path_filter: PathFilterField,
+  dir: z.string().optional().describe("Only search within this subtree."),
+  file: z.string().optional().describe("Restrict to a single file path."),
+  cursor: CursorField,
+  expand_function: z.boolean().optional().default(false).describe("Expand matches to their enclosing function bodies (Code Mode)."),
   response_format: RESPONSE_FORMAT,
 });
 
 export const SearchPatternArgs = z.object({
   pattern: z.string().min(1).refine((p) => { try { new RegExp(p); return true; } catch { return false; } }, { message: "pattern must be a valid regular expression" }).describe("Regular expression pattern to search for"),
   projects: z.array(z.string()).optional().describe("Limit to specific projects"),
-  file_type: z.string().optional().describe(FILE_TYPE_DESC),
+  file_type: FileTypeField,
   max_results: z.number().int().min(1).max(100).default(20).describe("Maximum results to return"),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
 });
 export type SearchPatternArgs = z.infer<typeof SearchPatternArgs>;
@@ -60,6 +111,7 @@ export const FindFileArgs = z.object({
   projects: z.array(z.string()).optional(),
   max_results: z.number().int().min(1).max(100).default(10),
   start_index: z.number().int().min(0).default(0),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
 });
 
@@ -68,19 +120,32 @@ export const GetFileContentArgs = z.object({
   path: z.string().min(1),
   start_line: z.number().int().min(1).optional().describe("Start line (1-indexed)"),
   end_line: z.number().int().min(1).optional().describe("End line (1-indexed)"),
+  expand_function: z.boolean().optional().default(false).describe("Expand content around start_line to its enclosing function body (Code Mode)."),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
+}).superRefine((data, ctx) => {
+  if (data.start_line !== undefined && data.end_line !== undefined && data.end_line < data.start_line) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "end_line must be >= start_line",
+      path: ["end_line"],
+    });
+  }
 });
 
 export const GetFileHistoryArgs = z.object({
   project: z.string().min(1),
   path: z.string().min(1),
   max_entries: z.number().int().min(1).max(50).default(10),
+  start_index: z.number().int().min(0).default(0).describe("Pagination offset — skip N commits from start"),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
 });
 
 export const BrowseDirectoryArgs = z.object({
   project: z.string().min(1),
   path: z.string().default(""),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
 });
 
@@ -94,13 +159,30 @@ export const GetFileAnnotateArgs = z.object({
   path: z.string().min(1),
   start_line: z.number().int().min(1).optional().describe("Start line (1-indexed)"),
   end_line: z.number().int().min(1).optional().describe("End line (1-indexed)"),
+  revision: z.string().optional().describe("Show blame as of this historical revision. Omit for current."),
   response_format: RESPONSE_FORMAT,
+}).superRefine((data, ctx) => {
+  if (data.start_line !== undefined && data.end_line !== undefined && data.end_line < data.start_line) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "end_line must be >= start_line",
+      path: ["end_line"],
+    });
+  }
 });
 
 export const SearchSuggestArgs = z.object({
   query: z.string().min(1),
-  project: z.string().optional(),
-  field: z.enum(["full", "defs", "refs", "path"]).default("full"),
+  project: z.string().optional().describe("Limit suggestions to a single project (deprecated — use projects)."),
+  projects: z.array(z.string()).optional().describe("Limit suggestions to specific projects. Omit to use the server default."),
+  field: z.enum(["full", "defs", "refs", "path", "hist"]).default("full"),
+  context: z.object({
+    full: z.string().optional(),
+    defs: z.string().optional(),
+    refs: z.string().optional(),
+    path: z.string().optional(),
+    hist: z.string().optional(),
+  }).optional().describe("Values in other search fields — the suggest engine uses all fields together for context-aware ranking"),
   response_format: RESPONSE_FORMAT,
 });
 
@@ -148,25 +230,42 @@ export const BatchSearchArgs = z.object({
     .array(
       z.object({
         query: z.string().min(1),
-        search_type: z.enum(["full", "defs", "refs", "path", "hist"]).default("full"),
+        search_type: z.enum(["full", "defs", "refs", "symbol", "path", "hist"]).default("full"),
         max_results: z.number().int().min(1).max(25).default(5),
+        path_filter: PathFilterField,
+        dir: z.string().optional().describe("Only search this query within a subtree."),
+        max_hits_per_file: MaxHitsPerFileField,
+        expand_function: z.boolean().optional().describe("Expand matches to enclosing function bodies (Code Mode)."),
+        file: z.string().optional().describe("Restrict this query to a single file path."),
       })
     )
     .min(1)
-    .max(5)
-    .describe("Search queries to execute in parallel"),
+    .max(10, "batchSearch: maximum 10 queries allowed. Split into multiple batchSearch() calls.")
+    .describe("Search queries to execute in parallel (max 10)"),
   projects: z.array(z.string()).optional(),
-  file_type: z.string().optional().describe(FILE_TYPE_DESC),
+  file_type: FileTypeField,
+  sort: SortField,
+  path_filter: PathFilterField,
+  dir: z.string().optional().describe("Default subtree filter for all queries."),
+  file: z.string().optional().describe("Default single-file filter for all queries."),
+  max_hits_per_file: MaxHitsPerFileField,
+  expand_function: z.boolean().optional().default(false).describe("Expand matches to their enclosing function bodies (Code Mode)."),
   response_format: RESPONSE_FORMAT,
 });
 
 export const SearchAndReadArgs = z.object({
   query: z.string().min(1),
-  search_type: z.enum(["full", "defs", "refs", "path", "hist"]).default("full"),
+  search_type: z.enum(["full", "defs", "refs", "symbol", "path", "hist"]).default("full"),
   projects: z.array(z.string()).optional(),
   context_lines: z.number().int().min(1).max(50).default(5).describe("Lines of context around each match"),
   max_results: z.number().int().min(1).max(10).default(3),
-  file_type: z.string().optional().describe(FILE_TYPE_DESC),
+  file_type: FileTypeField,
+  sort: SortField,
+  path_filter: PathFilterField,
+  dir: z.string().optional().describe("Only search within this subtree."),
+  file: z.string().optional().describe("Restrict to a single file path."),
+  max_hits_per_file: MaxHitsPerFileField,
+  expand_function: z.boolean().optional().default(false).describe("Expand matches to their enclosing function bodies (Code Mode)."),
   response_format: RESPONSE_FORMAT,
 });
 
@@ -176,7 +275,8 @@ export const GetSymbolContextArgs = z.object({
   context_lines: z.number().int().min(5).max(50).default(20).describe("Lines of context around the definition"),
   max_refs: z.number().int().min(1).max(20).default(5),
   include_header: z.boolean().default(true).describe("Also fetch corresponding .h/.hpp if a .cpp definition is found"),
-  file_type: z.string().optional().describe(FILE_TYPE_DESC),
+  file_type: FileTypeField,
+  file: z.string().optional().describe("Restrict to definitions in this file path (e.g. 'src/Foo.cpp')."),
   response_format: RESPONSE_FORMAT,
 });
 
@@ -195,6 +295,7 @@ export const GetCompileInfoArgs = z.object({
 export const GetFileSymbolsArgs = z.object({
   project: z.string().min(1).describe("OpenGrok project name"),
   path: z.string().min(1).describe("Path to the file within the project (e.g. GridNode/EventLoop.cpp)"),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
 });
 
@@ -209,7 +310,45 @@ export const GetFileDiffArgs = z.object({
   path: z.string().min(1).describe("File path within the project (e.g. src/Foo.cpp)"),
   rev1: z.string().min(1).describe("First (older) revision hash — get from opengrok_get_file_history."),
   rev2: z.string().min(1).describe("Second (newer) revision hash"),
+  cursor: CursorField,
   response_format: RESPONSE_FORMAT,
+});
+
+// ---------------------------------------------------------------------------
+// New generic tool argument schemas (history/files/groups/repositories)
+// ---------------------------------------------------------------------------
+
+export const GetAllMatchesArgs = z.object({
+  project: z.string().min(1),
+  path: z.string().min(1),
+  query: z.string().min(1).describe("The search query that produced the truncated results"),
+  search_type: z.enum(["full", "defs", "refs", "symbol", "path", "hist"]).default("full"),
+  max_results: z.number().int().min(1).max(200).optional().describe("Maximum matches to return"),
+  response_format: RESPONSE_FORMAT,
+});
+
+export const GetFileHistoryWithFilesArgs = z.object({
+  project: z.string().min(1),
+  path: z.string().min(1),
+  max_entries: z.number().int().min(1).max(100).default(20),
+  response_format: RESPONSE_FORMAT,
+});
+
+export const GetDownloadUrlArgs = z.object({
+  project: z.string().min(1),
+  path: z.string().min(1),
+});
+
+export const ListGroupsArgs = z.object({ response_format: RESPONSE_FORMAT });
+
+export const GetProjectRepositoriesArgs = z.object({
+  project: z.string().min(1),
+});
+
+export const GetSuggestPopularityArgs = z.object({
+  project: z.string().min(1),
+  field: z.enum(["full", "defs", "refs", "path", "hist"]).default("full"),
+  page_size: z.number().int().min(1).max(100).default(20),
 });
 
 // ---------------------------------------------------------------------------
@@ -225,6 +364,7 @@ export interface SearchResult {
   project: string;
   path: string;
   matches: SearchMatch[];
+  lastModified?: string;
 }
 
 export interface SearchResults {
@@ -235,6 +375,9 @@ export interface SearchResults {
   results: SearchResult[];
   startIndex: number;
   endIndex: number;
+  spellSuggestions?: string[];
+  lastIndexUpdate?: string;
+  cursor?: string;
 }
 
 export interface HistoryEntry {
@@ -332,6 +475,30 @@ export interface FileDiff {
   /** Standard unified diff string (git-diff compatible) */
   unifiedDiff: string;
   stats: { added: number; removed: number };
+  renamedFrom?: string;
+  renamedTo?: string;
+  modeChange?: { oldMode: string; newMode: string };
+}
+
+export interface RssHistoryEntry {
+  revision: string;
+  summary: string;
+  fullMessage: string;
+  author: string;
+  date: string;
+  files: string[];
+  branches: string[];
+  updateForm?: string;
+  mergeRequest?: string;
+  autoCheckin: boolean;
+}
+
+export interface SuggestConfig {
+  enabled: boolean;
+  maxResults: number;
+  allowedFields: string[];
+  allowMostPopular: boolean;
+  rebuildCronConfig?: string;
 }
 
 // ---------------------------------------------------------------------------

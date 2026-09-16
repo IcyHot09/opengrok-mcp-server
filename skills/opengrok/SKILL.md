@@ -56,18 +56,18 @@ to chaining individual calls.
 | Goal | Tool | Why |
 |------|------|-----|
 | Understand a symbol (definition + context + references) | `opengrok_get_symbol_context` | Replaces 3 separate calls. Returns definition source, surrounding context, and reference locations in one shot. Set `include_header: true` for C/C++ to also fetch the matching `.h`/`.hpp`. |
-| Search and immediately read matching files | `opengrok_search_and_read` | Replaces search → read chains. Returns search hits with inline file content. Use `context_lines` (1–50, default 10) to control how much surrounding code is shown. |
-| Run multiple search queries at once | `opengrok_batch_search` | Replaces sequential `opengrok_search_code` calls. Pass up to 5 queries in a `queries` array (max 25 results per query). `file_type` is top-level, not per-query. |
+| Search and immediately read matching files | `opengrok_search_and_read` | Replaces search → read chains. Returns search hits with inline file content. Use `context_lines` (1–50, default 5) to control how much surrounding code is shown. |
+| Run multiple search queries at once | `opengrok_batch_search` | Replaces sequential `opengrok_search_code` calls. Pass up to 10 queries in a `queries` array (max 25 results per query, default 5). `file_type` is top-level, not per-query. |
 | Check if OpenGrok is reachable | `opengrok_index_health` | Quick connectivity and index status diagnostic. Run this first in every session. |
 
 ### Code Mode Tools (preferred when available)
 
-When Code Mode is enabled, these 5 tools replace all individual tools above:
+When Code Mode is enabled, these tools replace all individual tools above (2 by default, 5 with `OPENGROK_ENABLE_MEMORY_TOOLS=true`):
 
 | Goal | Tool | Why |
 |------|------|-----|
-| Get the API specification | `opengrok_api` | Returns the full spec of all `env.opengrok.*` sandbox methods. Call once per session. With `OPENGROK_ENABLE_ELICITATION=true`, also prompts the user to select a working project at startup. |
-| Execute a JavaScript program against OpenGrok | `opengrok_execute` | Write JS code using `env.opengrok.*` methods. Only the `return` value crosses back — intermediate data stays in sandbox (huge token savings). |
+| Get the API specification | `opengrok_api` | Returns the full spec of all sandbox methods. Call once per session. With `OPENGROK_ENABLE_ELICITATION=true`, also prompts the user to select a working project at startup. |
+| Execute a JavaScript program against OpenGrok | `opengrok_execute` | Write JS code using flat globals (`search(...)`) or equivalently `env.opengrok.*` methods. Only the `return` value crosses back — intermediate data stays in sandbox (huge token savings). |
 | Read memory bank file | `opengrok_read_memory` | Read `active-task.md` or `investigation-log.md` |
 | Write/append to memory bank file | `opengrok_update_memory` | Persist findings across turns |
 | Check memory bank status | `opengrok_memory_status` | See file sizes and previews without reading full content |
@@ -80,15 +80,18 @@ When Code Mode is enabled, these 5 tools replace all individual tools above:
 | Find files by name or path pattern | `opengrok_find_file` |
 | Read file contents (always pass `start_line`/`end_line`) | `opengrok_get_file_content` |
 | File commit history | `opengrok_get_file_history` |
+| Commit history with co-changed files (RSS) | `opengrok_get_file_history_with_files` |
+| All matching lines in a file (truncated search) | `opengrok_get_all_matches` |
+| Direct download URL for a file | `opengrok_get_download_url` |
 | List directory contents | `opengrok_browse_directory` |
 | List all accessible projects | `opengrok_list_projects` |
+| List project groups | `opengrok_list_groups` |
+| List repositories for a project | `opengrok_get_project_repositories` |
+| Popular suggestions for a project field | `opengrok_get_suggest_popularity` |
 | Git blame / annotate with optional line range | `opengrok_get_file_annotate` |
 | List top-level symbols in a file (functions, classes, macros) | `opengrok_get_file_symbols` |
 | Autocomplete suggestions for partial queries | `opengrok_search_suggest` |
 | Compiler flags and include paths (requires local `compile_commands.json`) | `opengrok_get_compile_info` |
-| Check session memory state (call at startup) | `opengrok_memory_status` |
-| Read a memory bank file (`active-task.md` or `investigation-log.md`) | `opengrok_read_memory` |
-| Write or append to a memory bank file | `opengrok_update_memory` |
 
 > **`opengrok_find_file` vs `search_type: "path"`:** Use `find_file` for
 > filename/glob patterns (e.g., `config.ts`, `test*.js`). Use `opengrok_search_code`
@@ -141,7 +144,7 @@ status: investigating | blocked | complete
 
 ## Code Mode
 
-Code Mode reduces tool calls to just 5, saving 75–95% tokens vs standard mode's 20+ tools.
+Code Mode reduces tool calls to just 5, saving 75–95% tokens vs standard mode's 20 tools.
 
 ### Workflow
 
@@ -204,12 +207,22 @@ if (results.totalCount === 0) {
 ```
 
 ### Code Mode Notes
+- Client tool timeout: `opengrok_execute` may run up to the 62 s server budget — if your MCP client has its own tool timeout, set it to **≥ 70 s** or the client will abort healthy long-running investigations
 - `Promise.all` does **not** parallelize inside the sandbox VM — use `env.opengrok.batchSearch()` for independent parallel searches; sequential calls for dependent operations are fine
 - All `env.opengrok.*` calls are synchronous from your code's perspective
 - `env.opengrok.readMemory(filename)` / `writeMemory(filename, content)` for Living Document access
 - `env.opengrok.elicit(message, schema)` — pause and ask the user to choose from a list (v9.0+, requires `OPENGROK_ENABLE_ELICITATION=true`); returns `{ action, content }` — always handle `action !== "accept"`
 - `env.opengrok.sample(prompt, opts?)` — call the client's LLM for suggestions (v9.0+); returns `string | null` — always null-guard
 - `_suggestions` — auto-injected into zero-result `search()` responses when sampling is available (v9.0+)
+- `expandFunction: true` — pass to `search()` / `batchSearch()` / `getFileContent()` to inline enclosing function bodies (up to 3 files per call, tree-sitter). Saves a separate `read` call.
+- `env.opengrok.traceCallChain()` supports both `callers` and `callees` directions — callees use tree-sitter AST analysis for supported languages and return real results (not empty).
+- `env.opengrok.getFileAnnotate(project, path, { revision, startLine, endLine, includeContent })` — historical blame, range filter (OOB throws), `includeContent:false` omits content
+- `env.opengrok.getFileOverview(project, path, { includeImports })` — imports omitted unless `includeImports:true`
+- `env.opengrok.getFileDiff(project, path, rev1, rev2, { includeHunks })` — `false` returns `{unifiedDiff,stats}` only (default `true` keeps hunks)
+- `env.opengrok.searchSuggest(query, { context })` — pass other-field values for context-aware ranking
+- `env.opengrok.listProjects(filter?)` — optional substring/glob filter
+- `env.opengrok.getGuidanceForPath(project, path, opts?)` — AGENTS.md/CLAUDE.md discovery near a file
+- `env.opengrok.indexHealth()` — also returns `serverVersion` and `suggestConfig` when available
 
 ## Search Types
 
@@ -220,6 +233,7 @@ if (results.totalCount === 0) {
 | `full` | General text search — grep-like, matches anywhere in file content |
 | `defs` | Find where a symbol is **defined** (function, class, variable declaration). Prefer this for known symbol names. |
 | `refs` | Find where a symbol is **referenced** (called, imported, used). |
+| `symbol` | Combined defs + refs in one search (broader than defs alone). |
 | `path` | Search file paths/names. |
 | `hist` | Search commit messages and changelogs. |
 
@@ -252,13 +266,29 @@ These tools accept an optional `file_type` to restrict results by language:
 - `opengrok_search_and_read`
 - `opengrok_get_symbol_context`
 
-Common values: `c`, `cxx` (C++), `java`, `python`, `javascript`, `typescript`, `csharp`, `golang`, `ruby`, `perl`, `php`, `scala`, `kotlin`, `swift`, `rust`, `sql`, `xml`, `json`, `yaml`, `shell`, `makefile`
+`file_type` is the lowercased OpenGrok analyzer name (not the file extension).
+Canonical values: `c`, `cxx` (C++), `java`, `javascript`, `typescript`, `csharp`
+(C#), `python`, `sh` (shell), `powershell`, `golang` (Go), `rust`, `kotlin`,
+`scala`, `sql`, `plsql`, `perl`, `ruby`, `swift`, `php`, `xml`, `json`, `yaml`,
+`hcl`, `terraform`, `lua`, `ada`, `fortran`, `r`, `haskell`, `clojure`,
+`erlang`, `lisp`, `tcl`, `pascal`, `eiffel`, `asm`, `vb`, `verilog`, `plain`,
+`cobol`, `ocaml`, `mandoc`, `troff`.
+
+Aliases are accepted and normalized: `cpp`/`c++`/`h`/`hpp`→`cxx`,
+`go`→`golang`, `bash`/`shell`/`makefile`→`sh`, `js`→`javascript`,
+`ts`→`typescript`, `cs`→`csharp`, `py`→`python`, `rb`→`ruby`, `rs`→`rust`.
+Anything else is rejected with an "Invalid fileType" error listing the valid types.
 
 ### response_format
 
 All standard mode tools accept `response_format`:
-- `"markdown"` (default) — human-readable, optimized for LLM consumption
-- `"json"` — structured output for programmatic use
+- `"auto"` (default) — server picks the best format per response type
+- `"markdown"` — human-readable, optimized for LLM consumption
+- `"json"` — structured output for programmatic use (includes `totalCount`, `results`, `hasMore`)
+- `"tsv"` — compact tabular format (~50% token savings on search results)
+- `"toon"` — token-optimized notation (~40% fewer tokens than JSON)
+- `"yaml"` — hierarchical data
+- `"text"` — raw code, no framing
 
 ### Line ranges
 
@@ -266,18 +296,38 @@ Always pass `start_line` and `end_line` to `opengrok_get_file_content`. Never fe
 
 ### Pagination
 
-`opengrok_search_code`, `opengrok_search_and_read`, and `opengrok_batch_search` support pagination. JSON responses include `hasMore` and `nextOffset`. Pass `nextOffset` as the `start_index` parameter to fetch the next page.
+`opengrok_search_code`, `opengrok_search_and_read`, `opengrok_find_file`,
+`opengrok_get_file_history`, `opengrok_browse_directory`,
+`opengrok_get_file_symbols`, and `opengrok_get_file_diff` support pagination.
+JSON responses include an opaque `cursor` when more pages exist — pass it back
+as the `cursor` parameter for the next page (preferred). `start_index` /
+`nextOffset` still works as a fallback for offset-based paging. Expired or
+cross-method cursors return `_cursorExpired` — reissue the call without a
+cursor to start fresh.
+
+In Code Mode, the same applies to sandbox methods: `search()` returns `cursor`
+plus `startIndex`/`endIndex` (set `startIndex` to the previous `endIndex`, or
+pass `cursor` back verbatim); `findFile()`, `getFileHistory()`,
+`browseDir()`, and `getFileSymbols()` accept `cursor` the same way.
+`batchSearch()` does not support pagination — it always fetches from offset 0.
 
 
 ## Gotchas
 
-1. **Fetch files with targeted line ranges.** Without `start_line`/`end_line`, `opengrok_get_file_content` hits the 16 KB response cap and truncates — wasting tokens and losing data. Use `opengrok_get_file_symbols` first to find interesting functions or classes, then read specific ranges.
+1. **Fetch files with targeted line ranges.** Without `start_line`/`end_line`, `opengrok_get_file_content` hits the context-budget response cap and truncates — wasting tokens and losing data. Use `opengrok_get_file_symbols` first to find interesting functions or classes, then read specific ranges.
 
-2. **`opengrok_batch_search` queries structure.** Pass queries as a top-level `queries` array (max 5). The `file_type` filter is top-level, not per-query. Each query object has its own `search_type` and `query`.
+2. **`opengrok_batch_search` queries structure.** Pass queries as a top-level `queries` array (max 10). The `file_type` filter is top-level, not per-query. Each query object has its own `search_type` and `query`. Pagination (`start_index`) is not supported in batch search — use `opengrok_search_code` with `start_index`/`cursor` for paginated results.
 
 3. **`opengrok_list_projects` filter is substring match.** Passing `"release"` matches `release-1.0`, `release-2.0`, etc. Omit the filter to list all projects.
 
-4. **Responses are capped.** Default 16 KB (configurable via `OPENGROK_MAX_RESPONSE_BYTES`). If results are truncated, narrow your query with `file_type`, specific projects, smaller `max_results`, or line ranges.
+4. **Responses are capped by context budget.** Three tiers control token usage
+   (~4 chars per token): `minimal` 8 KB (~2K tokens), `standard` 16 KB (~4K
+   tokens, default), `generous` 32 KB (~8K tokens) — set via
+   `OPENGROK_CONTEXT_BUDGET`. Override the byte cap with
+   `OPENGROK_MAX_RESPONSE_BYTES`, or the search-and-read compound cap (2/4/8 KB
+   per tier) with `OPENGROK_SEARCH_AND_READ_CAP`. If results are truncated,
+   narrow your query with `file_type`, specific projects, smaller
+   `max_results`, or line ranges.
 
 5. **Use the configured default project.** Unless the user specifies a different project, use whatever project is configured. Don't prompt for project selection unnecessarily.
 
@@ -293,7 +343,7 @@ Always pass `start_line` and `end_line` to `opengrok_get_file_content`. Never fe
 
 11. **VS Code memory vs OpenGrok memory.** VS Code Copilot's built-in `/memory` command stores general codebase knowledge (architecture, conventions, key directories) and auto-loads every session — free. The OpenGrok memory bank (`active-task.md`, `investigation-log.md`) is for investigation-specific state that needs to persist across multiple OpenGrok sessions. Use VS Code memory for "what is this codebase", OpenGrok memory for "what am I currently investigating".
 
-12. **Standard mode uses ~20 tools.** In token-constrained environments, enable Code Mode (5 tools) via Extension Settings or `OPENGROK_CODE_MODE=true`. When Code Mode is active, all operations go through the sandbox instead of individual tools.
+12. **Standard mode uses 26 tools.** In token-constrained environments, enable Code Mode (5 tools) via Extension Settings or `OPENGROK_CODE_MODE=true`. When Code Mode is active, all operations go through the sandbox instead of individual tools.
 
 ## Error Recovery
 

@@ -7,7 +7,7 @@ import {
   parseWebSearchResults,
   parseFileSymbols,
   parseFileDiff,
-} from '../server/parsers.js';
+} from '../server/parsers/index.js';
 import {
   PROJECTS_PAGE_HTML,
   DIRECTORY_LISTING_HTML,

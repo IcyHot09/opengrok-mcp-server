@@ -59,6 +59,64 @@ Session 2: Read memory → Resume from last state → Continue investigation
 Session 3: Read memory → Confirm root cause → Update active-task.md (status: complete)
 ```
 
+## Session Patterns
+
+### Fresh investigation (Code Mode)
+
+```javascript
+const status = env.opengrok.readMemory('active-task.md');
+env.opengrok.writeMemory('active-task.md',
+  `task: Investigating crash in EventLoop\nstarted: 2026-04-11\nstatus: investigating`,
+  'overwrite'
+);
+return { prior: status, message: "Investigation started" };
+```
+
+### Resuming prior session (Code Mode)
+
+```javascript
+const task = env.opengrok.readMemory('active-task.md');
+const log = env.opengrok.readMemory('investigation-log.md');
+return { task, recentFindings: log };
+```
+
+### Completing an investigation (Code Mode)
+
+```javascript
+env.opengrok.writeMemory('active-task.md',
+  `task: EventLoop crash root cause identified
+started: 2026-04-11
+last_symbol: EventLoop::handleCrash
+last_file: src/server/EventLoop.cpp
+next_step: none - root cause confirmed
+status: complete`,
+  'overwrite'
+);
+
+env.opengrok.writeMemory('investigation-log.md',
+  `\n## 2026-04-11 15:20 — Root cause confirmed\n\n**Conclusion:** Use-after-free in socket handle reuse.\n**Fix:** Add null check before handleCrash.\n`,
+  'append'
+);
+
+return "Investigation complete — findings saved to memory bank.";
+```
+
+## Memory Bank Limits
+
+| File | Max Size | Purpose |
+|------|----------|---------|
+| `active-task.md` | 4 KB | Current investigation state (overwrite) |
+| `investigation-log.md` | 32 KB | Append-only findings history |
+
+When `investigation-log.md` approaches its limit, the server auto-trims older entries
+using richness-scored compression (keeps the highest-value findings).
+
+## Tips
+
+1. **Don't over-write** — Only update memory when you have genuinely new findings.
+2. **Use VS Code `/memory` for general knowledge** — Reserve OpenGrok memory for investigation state.
+3. **Delta encoding** — Repeated reads return `[unchanged]` if the file hasn't been modified, saving tokens.
+
 ## VS Code Memory Integration
 
 | What to store | Where |

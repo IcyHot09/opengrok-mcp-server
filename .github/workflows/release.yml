@@ -24,6 +24,9 @@ jobs:
 
       - run: npm config delete always-auth --location=user 2>/dev/null || true
       - run: npm ci
+      # grammars/ is gitignored: populate it so tree-sitter tests resolve grammars
+      # (out/grammars/ from compile is a fallback, also probed by getGrammarDir).
+      - run: npm run copy-grammars
       - run: npm run lint
       - run: npm run compile
       - run: npm run test:coverage

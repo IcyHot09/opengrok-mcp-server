@@ -9,7 +9,7 @@ import {
   parseAnnotate,
   parseWebSearchResults,
   parseFileSymbols,
-} from '../server/parsers.js';
+} from '../server/parsers/index.js';
 
 // -----------------------------------------------------------------------
 // parseAnnotate — table-based fallback

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { MemoryBank, ALLOWED_FILES } from '../server/memory-bank.js';
+import { MemoryBank, ALLOWED_FILES } from '../server/memory/memory-bank.js';
 
 let tmpDir: string;
 let bank: MemoryBank;
@@ -395,7 +395,7 @@ describe('MemoryBank.getStatusLine — age and error paths', () => {
 // FileReferenceCache
 // ---------------------------------------------------------------------------
 
-import { FileReferenceCache } from '../server/file-cache.js';
+import { FileReferenceCache } from '../server/utils/file-cache.js';
 
 describe('FileReferenceCache', () => {
   let cache: FileReferenceCache;

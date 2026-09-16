@@ -4,11 +4,11 @@
  * Now imports the real ToolRateLimiter from its dedicated module.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ToolRateLimiter } from '../server/tool-rate-limiter.js';
+import { ToolRateLimiter } from '../server/tools/tool-rate-limiter.js';
 import { DEFAULT_PER_TOOL_LIMITS } from '../server/config.js';
 
 // Silence audit log stderr in tests
-vi.mock('../server/audit.js', () => ({
+vi.mock('../server/transport/audit.js', () => ({
   auditLog: vi.fn(),
 }));
 
@@ -128,7 +128,7 @@ describe('ToolRateLimiter', () => {
 describe('DEFAULT_PER_TOOL_LIMITS', () => {
   it('includes expected tool limits', () => {
     expect(DEFAULT_PER_TOOL_LIMITS.opengrok_batch_search).toBe(5);
-    expect(DEFAULT_PER_TOOL_LIMITS.opengrok_execute).toBe(10);
+    expect(DEFAULT_PER_TOOL_LIMITS.opengrok_execute).toBe(15);
     expect(DEFAULT_PER_TOOL_LIMITS.opengrok_dependency_map).toBe(10);
     expect(DEFAULT_PER_TOOL_LIMITS.opengrok_call_graph).toBe(5);
     expect(DEFAULT_PER_TOOL_LIMITS.opengrok_search_and_read).toBe(10);
@@ -142,13 +142,13 @@ describe('parsePerToolLimits', () => {
     // Verify that DEFAULT_PER_TOOL_LIMITS has expected values
     const expectedDefaults = {
       opengrok_batch_search: 5,
-      opengrok_execute: 10,
+      opengrok_execute: 15,
       opengrok_dependency_map: 10,
     };
     
     // These assertions are illustrative — actual values checked in integration tests
     expect(expectedDefaults.opengrok_batch_search).toBe(5);
-    expect(expectedDefaults.opengrok_execute).toBe(10);
+    expect(expectedDefaults.opengrok_execute).toBe(15);
     expect(expectedDefaults.opengrok_dependency_map).toBe(10);
   });
 });

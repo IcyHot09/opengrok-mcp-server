@@ -5,9 +5,12 @@ import * as https from 'https';
 import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { syncServerCredentials } from './extension/credentials.js';
+import { buildOpenGrokEnv } from './shared/settings-catalog.js';
 
 // Global state keys
 const SETUP_PROMPTED_KEY = 'opengrok.setupPrompted.v2';
+const SETTINGS_NONCE_KEY = 'opengrok-mcp.settingsNonce';
 
 // Auto-update check
 const GITHUB_REPO_OWNER = 'IcyHot09';
@@ -20,6 +23,21 @@ let outputChannel: vscode.OutputChannel;
 let statusBarItem: vscode.StatusBarItem;
 let secretStorage: vscode.SecretStorage;
 let mcpProvider: OpenGrokMcpProvider | undefined;
+let extensionContext: vscode.ExtensionContext | undefined;
+// Guards the configure-panel prompt when the MCP client requests a server
+// definition without credentials — prompt at most once per session.
+let promptedForConfiguration = false;
+
+/**
+ * Open the configuration panel (once per session) when the MCP server cannot
+ * start for lack of credentials. The panel is a singleton — repeat calls
+ * reveal the existing panel instead of opening duplicates.
+ */
+function promptForConfiguration(): void {
+    if (promptedForConfiguration || !extensionContext) return;
+    promptedForConfiguration = true;
+    openConfigurationPanel(extensionContext);
+}
 let _credentialsSynced = false;
 
 /**
@@ -213,6 +231,7 @@ async function checkForRemoteUpdate(
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     secretStorage = context.secrets;
+    extensionContext = context;
 
     outputChannel = vscode.window.createOutputChannel('OpenGrok MCP');
     context.subscriptions.push(outputChannel);
@@ -438,6 +457,72 @@ function httpGet(url: URL, headers: Record<string, string>, verifySsl: boolean):
 }
 
 /**
+ * Perform a GET request and return the response body as text (for HTML fetching).
+ */
+function httpGetText(url: URL, headers: Record<string, string>, verifySsl: boolean): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const transport = url.protocol === 'https:' ? https : http;
+        const req = transport.request(
+            {
+                hostname: url.hostname,
+                port: url.port || (url.protocol === 'https:' ? 443 : 80),
+                path: url.pathname + url.search,
+                method: 'GET',
+                headers,
+                rejectUnauthorized: verifySsl,
+                timeout: 15000,
+            },
+            (res: http.IncomingMessage) => {
+                const statusCode = res.statusCode ?? 0;
+                if (statusCode < 200 || statusCode >= 400) {
+                    res.resume();
+                    reject(new Error(`HTTP ${statusCode}`));
+                    return;
+                }
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+            }
+        );
+        req.on('timeout', () => { req.destroy(); reject(new Error('Request timed out')); });
+        req.on('error', reject);
+        req.end();
+    });
+}
+
+/**
+ * Extract project names from the OpenGrok root page HTML.
+ * Looks for <select id="project"> options first, falls back to /xref/ links.
+ */
+function parseProjectsFromHtml(html: string): string[] {
+    const projects: string[] = [];
+    const seen = new Set<string>();
+    const selectMatch = /<select[^>]*(?:id=["']project["']|name=["']project["'])[^>]*>([\s\S]*?)<\/select>/i.exec(html);
+    if (selectMatch) {
+        const optionRe = /<option[^>]*value=["']([^"']+)["'][^>]*>/gi;
+        let m: RegExpExecArray | null;
+        while ((m = optionRe.exec(selectMatch[1])) !== null) {
+            const name = m[1];
+            if (name && !seen.has(name)) {
+                seen.add(name);
+                projects.push(name);
+            }
+        }
+        if (projects.length > 0) return projects;
+    }
+    const linkRe = /href=["'][^"']*\/xref\/([^/"'?#]+)\/?["']/gi;
+    let lm: RegExpExecArray | null;
+    while ((lm = linkRe.exec(html)) !== null) {
+        const name = lm[1];
+        if (name && !seen.has(name)) {
+            seen.add(name);
+            projects.push(name);
+        }
+    }
+    return projects;
+}
+
+/**
  * Perform a GET request and return the parsed JSON body.
  * Rejects if the response status is non-2xx or the body is not valid JSON.
  */
@@ -557,29 +642,55 @@ class OpenGrokMcpProvider implements vscode.McpServerDefinitionProvider {
     async provideMcpServerDefinitions(_token: vscode.CancellationToken): Promise<vscode.McpServerDefinition[]> {
         const config = vscode.workspace.getConfiguration('opengrok-mcp');
         const username = config.get<string>('username');
-        if (!username) return [];
+        if (!username) {
+            log('MCP server start blocked: no username configured');
+            promptForConfiguration();
+            return [];
+        }
 
         const password = await secretStorage.get(`opengrok-password-${username}`);
+        if (!password) {
+            log('MCP server start blocked: no password found');
+            promptForConfiguration();
+            return [];
+        }
         const baseUrl = config.get<string>('baseUrl') || '';
         const verifySsl = config.get<boolean>('verifySsl') ?? true;
-        const proxy = config.get<string>('proxy');
+        const proxy = config.get<string>('proxy') ?? '';
         const apiVersion = config.get<string>('apiVersion') || 'v1';
-        const enableElicitation = config.get<boolean>('enableElicitation') ?? false;
-
-        const env: Record<string, string> = {
-            OPENGROK_BASE_URL: baseUrl,
-            OPENGROK_USERNAME: username,
-            OPENGROK_VERIFY_SSL: verifySsl ? 'true' : 'false',
-            OPENGROK_API_VERSION: apiVersion,
-            OPENGROK_ENABLE_ELICITATION: enableElicitation ? 'true' : 'false',
-        };
-
+        const enableElicitation = config.get<boolean>('enableElicitation') ?? true;
         const codeMode = config.get<boolean>('codeMode') ?? true;
         const contextBudget = config.get<string>('contextBudget') ?? 'standard';
-        const memoryBankDir = config.get<string>('memoryBankDir') ?? '';
+        const compileDbPaths = (config.get<string>('compileDbPaths') ?? '').trim();
 
-        env.OPENGROK_CODE_MODE = codeMode ? 'true' : 'false';
-        env.OPENGROK_CONTEXT_BUDGET = contextBudget;
+        // Single source of truth for env construction (shared/settings-catalog):
+        // emits only non-default values; server-side loadConfig fills defaults.
+        const env = buildOpenGrokEnv({
+            opengrokBaseUrl: baseUrl,
+            username,
+            verifySsl,
+            proxy,
+            apiVersion,
+            enableElicitation,
+            codeMode,
+            contextBudget,
+            defaultProject: config.get<string>('defaultProject') ?? '',
+            responseFormatOverride: config.get<string>('responseFormatOverride') ?? '',
+            enableMemoryTools: config.get<boolean>('enableMemoryTools') ?? false,
+            enableFilesApi: config.get<boolean>('enableFilesApi') ?? false,
+            enableSampling: config.get<boolean>('enableSampling') ?? false,
+            samplingModel: config.get<string>('samplingModel') ?? '',
+            samplingMaxTokens: config.get<number>('samplingMaxTokens') ?? 256,
+            auditLogFile: config.get<string>('auditLogFile') ?? '',
+            rateLimitRpm: config.get<number>('rateLimitRpm') ?? 60,
+            enableObservationMasker: config.get<boolean>('enableObservationMasker') ?? false,
+            observationMaskerTurns: config.get<number>('observationMaskerTurns') ?? 10,
+            timeout: config.get<number>('timeout') ?? 30,
+            defaultMaxResults: config.get<number>('defaultMaxResults') ?? 25,
+            maxResponseBytes: config.get<number>('maxResponseBytes') ?? 0,
+        });
+
+        const memoryBankDir = config.get<string>('memoryBankDir') ?? '';
         if (memoryBankDir) {
             env.OPENGROK_MEMORY_BANK_DIR = memoryBankDir;
         } else if (vscode.workspace.workspaceFolders?.length) {
@@ -588,70 +699,13 @@ class OpenGrokMcpProvider implements vscode.McpServerDefinitionProvider {
             env.OPENGROK_MEMORY_BANK_DIR = path.join(wsRoot, '.opengrok', 'memory-bank');
         }
 
-        const defaultProject = config.get<string>('defaultProject') ?? '';
-        const responseFormatOverride = config.get<string>('responseFormatOverride') ?? '';
-        const compileDbPaths = (config.get<string>('compileDbPaths') ?? '').trim();
-        const enableFilesApi = config.get<boolean>('enableFilesApi') ?? false;
-        const enableSampling = config.get<boolean>('enableSampling') ?? false;
-        const samplingModel = config.get<string>('samplingModel') ?? '';
-        const samplingMaxTokens = config.get<number>('samplingMaxTokens') ?? 256;
-        const auditLogFile = config.get<string>('auditLogFile') ?? '';
-        const rateLimitRpm = config.get<number>('rateLimitRpm') ?? 60;
-        const enableObservationMasker = config.get<boolean>('enableObservationMasker') ?? false;
-        const observationMaskerTurns = config.get<number>('observationMaskerTurns') ?? 10;
-        const timeout = config.get<number>('timeout') ?? 30;
-        const defaultMaxResults = config.get<number>('defaultMaxResults') ?? 25;
-        if (defaultProject) env.OPENGROK_DEFAULT_PROJECT = defaultProject;
-        if (responseFormatOverride) env.OPENGROK_RESPONSE_FORMAT_OVERRIDE = responseFormatOverride;
-        if (enableFilesApi) env.OPENGROK_ENABLE_FILES_API = 'true';
-        if (enableSampling) env.OPENGROK_ENABLE_SAMPLING = 'true';
-        if (samplingModel) env.OPENGROK_SAMPLING_MODEL = samplingModel;
-        if (samplingMaxTokens !== 256) env.OPENGROK_SAMPLING_MAX_TOKENS = String(samplingMaxTokens);
-        if (auditLogFile) env.OPENGROK_AUDIT_LOG_FILE = auditLogFile;
-        if (rateLimitRpm !== 60) env.OPENGROK_RATELIMIT_RPM = String(rateLimitRpm);
-        if (enableObservationMasker) env.OPENGROK_ENABLE_OBSERVATION_MASKER = 'true';
-        if (observationMaskerTurns !== 10) env.OPENGROK_OBSERVATION_MASKER_TURNS = String(observationMaskerTurns);
-        if (timeout !== 30) env.OPENGROK_TIMEOUT = String(timeout);
-        if (defaultMaxResults !== 25) env.OPENGROK_DEFAULT_MAX_RESULTS = String(defaultMaxResults);
-
         if (!_credentialsSynced && password) {
-            try {
-                // Write to OS keychain so server can read it via resolveConfig() on startup.
-                // Uses @napi-rs/keyring (native addon, already a dependency).
-                // Falls back to AES-256-GCM encrypted file in ~/.config/opengrok-mcp/ for headless Linux.
-                const { Entry } = await import('@napi-rs/keyring');
-                const entry = new Entry('opengrok-mcp', username);
-                entry.setPassword(password);
-                log('Credentials stored in OS keychain for server startup.');
-            } catch (keychainErr) {
-                log(`Keychain unavailable (${keychainErr}), using encrypted file fallback.`);
-                // Headless Linux / no libsecret: write encrypted file (same format as keychain.ts)
-                try {
-                    const xdgConfig = process.env['XDG_CONFIG_HOME'] || path.join(os.homedir(), '.config');
-                    const credDir = path.join(xdgConfig, 'opengrok-mcp');
-                    fs.mkdirSync(credDir, { recursive: true });
-                    // Key derived from machine identity — no key file needed
-                    const key = crypto.createHash('sha256')
-                        .update(`opengrok-mcp:${username}:${os.hostname()}:${os.platform()}`)
-                        .digest('hex');
-                    const iv = crypto.randomBytes(12);
-                    const cipher = crypto.createCipheriv('aes-256-gcm', Buffer.from(key, 'hex'), iv);
-                    const encrypted = Buffer.concat([cipher.update(password, 'utf8'), cipher.final()]);
-                    const tag = (cipher as crypto.CipherGCM).getAuthTag();
-                    const encoded = 'gcm:' + Buffer.concat([iv, tag, encrypted]).toString('base64');
-                    fs.writeFileSync(path.join(credDir, `cred-${username}.enc`), encoded, { encoding: 'utf8', mode: 0o600 });
-                    log('Credentials stored in encrypted file (headless fallback).');
-                } catch (fileErr) {
-                    log(`Warning: Failed to store credentials: ${fileErr}. Server may fail to start.`);
-                }
-            }
+            // Background sync must not clobber a fresher CLI-saved value:
+            // preserve a differing stored password (with a warning) instead
+            // of overwriting it. Explicit saves below always win.
+            const ok = syncServerCredentials(baseUrl, username, password, log, { overwriteExisting: false });
             // Server reads from keychain via resolveConfig() in main.ts — no env vars needed.
-            _credentialsSynced = true;
-        }
-
-        if (proxy) {
-            env.HTTP_PROXY = proxy;
-            env.HTTPS_PROXY = proxy;
+            _credentialsSynced = ok;
         }
 
         // Local layer — user config takes precedence over auto-discovery
@@ -668,13 +722,17 @@ class OpenGrokMcpProvider implements vscode.McpServerDefinitionProvider {
         // Return the definition object
         // Use process.execPath to get VS Code's bundled Node.js runtime path
         // This ensures it works even when Node.js is not installed system-wide
+        const settingsNonce = extensionContext?.globalState.get<number>(SETTINGS_NONCE_KEY) ?? 0;
         const def = new vscode.McpStdioServerDefinition(
             'OpenGrok',
             process.execPath,
             [getServerScriptPath()],
             env,
-            `${getExtensionVersion()}-${codeMode ? 'code' : 'legacy'}-${contextBudget}`
+            `${getExtensionVersion()}-${codeMode ? 'code' : 'legacy'}-${contextBudget}-${settingsNonce}`
         );
+        if (vscode.workspace.workspaceFolders?.[0]) {
+            def.cwd = vscode.workspace.workspaceFolders[0].uri;
+        }
         return [def];
     }
 }
@@ -734,8 +792,11 @@ function openConfigurationPanel(context: vscode.ExtensionContext): void {
                     case 'silentTestConnection':
                         await testConnection(true);
                         break;
+                    case 'fetchProjects':
+                        await _handleFetchProjects(configPanel.webview, message.data as { baseUrl: string; username: string; password: string; verifySsl: boolean });
+                        break;
                     case 'saveConfiguration':
-                        await _handleSaveConfiguration(configPanel.webview, message.data as { baseUrl: string; username: string; password?: string; proxy?: string; verifySsl: boolean; defaultProject?: string; contextBudget?: string; responseFormatOverride?: string; codeMode?: boolean; memoryBankDir?: string; compileDbPaths?: string; codeModeChanged?: boolean; apiVersion?: string; enableElicitation?: boolean; enableFilesApi?: boolean; samplingModel?: string; samplingMaxTokens?: number; auditLogFile?: string; rateLimitRpm?: number });
+                        await _handleSaveConfiguration(configPanel.webview, message.data as { baseUrl: string; username: string; password?: string; proxy?: string; verifySsl: boolean; defaultProject?: string; contextBudget?: string; responseFormatOverride?: string; codeMode?: boolean; memoryBankDir?: string; compileDbPaths?: string; codeModeChanged?: boolean; apiVersion?: string; enableElicitation?: boolean; enableFilesApi?: boolean; samplingModel?: string; samplingMaxTokens?: number; auditLogFile?: string; rateLimitRpm?: number; maxResponseBytes?: number });
                         break;
                 }
             } catch (error: unknown) {
@@ -767,10 +828,11 @@ async function _sendCurrentConfig(webview: vscode.Webview): Promise<void> {
     const contextBudget = config.get<string>('contextBudget') || 'standard';
     const responseFormatOverride = config.get<string>('responseFormatOverride') || '';
     const codeMode = config.get<boolean>('codeMode') ?? true;
+    const enableMemoryTools = config.get<boolean>('enableMemoryTools') ?? false;
     const memoryBankDir = config.get<string>('memoryBankDir') || '';
     const compileDbPaths = config.get<string>('compileDbPaths') || '';
     const apiVersion = config.get<string>('apiVersion') || 'v1';
-    const enableElicitation = config.get<boolean>('enableElicitation') ?? false;
+    const enableElicitation = config.get<boolean>('enableElicitation') ?? true;
     const enableFilesApi = config.get<boolean>('enableFilesApi') ?? false;
     const enableSampling = config.get<boolean>('enableSampling') ?? false;
     const samplingModel = config.get<string>('samplingModel') ?? '';
@@ -781,6 +843,7 @@ async function _sendCurrentConfig(webview: vscode.Webview): Promise<void> {
     const observationMaskerTurns = config.get<number>('observationMaskerTurns') ?? 10;
     const timeout = config.get<number>('timeout') ?? 30;
     const defaultMaxResults = config.get<number>('defaultMaxResults') ?? 25;
+    const maxResponseBytes = config.get<number>('maxResponseBytes') ?? 0;
 
     let hasPassword = false;
     if (username) {
@@ -790,7 +853,7 @@ async function _sendCurrentConfig(webview: vscode.Webview): Promise<void> {
 
     webview.postMessage({
         type: 'loadConfig',
-        config: { baseUrl, username, verifySsl, proxy, hasPassword, defaultProject, contextBudget, responseFormatOverride, codeMode, memoryBankDir, compileDbPaths, apiVersion, enableElicitation, enableFilesApi, enableSampling, samplingModel, samplingMaxTokens, auditLogFile, rateLimitRpm, timeout, defaultMaxResults, enableObservationMasker, observationMaskerTurns }
+        config: { baseUrl, username, verifySsl, proxy, hasPassword, defaultProject, contextBudget, responseFormatOverride, codeMode, enableMemoryTools, memoryBankDir, compileDbPaths, apiVersion, enableElicitation, enableFilesApi, enableSampling, samplingModel, samplingMaxTokens, auditLogFile, rateLimitRpm, timeout, defaultMaxResults, enableObservationMasker, observationMaskerTurns, maxResponseBytes }
     });
 }
 
@@ -816,6 +879,33 @@ async function _handleTestConnection(webview: vscode.Webview, data: { baseUrl: s
     );
 }
 
+async function _handleFetchProjects(webview: vscode.Webview, data: { baseUrl: string; username: string; password: string; verifySsl: boolean }): Promise<void> {
+    let passwordToUse = data.password;
+    if (!passwordToUse && data.username) {
+        const saved = await secretStorage.get(`opengrok-password-${data.username}`);
+        if (saved) passwordToUse = saved;
+    }
+    if (!data.baseUrl) {
+        void webview.postMessage({ type: 'error', message: 'URL is required to fetch projects.' });
+        return;
+    }
+    try {
+        const parsed = new URL(data.baseUrl);
+        const headers: Record<string, string> = {};
+        if (data.username) {
+            headers['Authorization'] = `Basic ${Buffer.from(`${data.username}:${passwordToUse}`).toString('base64')}`;
+        }
+        const html = await httpGetText(parsed, headers, data.verifySsl);
+        const projects = parseProjectsFromHtml(html).sort((a, b) => a.localeCompare(b));
+        void webview.postMessage({ type: 'projectsList', projects });
+        log(`Fetched ${projects.length} projects from OpenGrok.`);
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`Failed to fetch projects: ${msg}`);
+        void webview.postMessage({ type: 'error', message: `Could not fetch projects: ${msg}` });
+    }
+}
+
 async function _handleSaveConfiguration(webview: vscode.Webview, data: {
     baseUrl: string;
     username: string;
@@ -826,6 +916,7 @@ async function _handleSaveConfiguration(webview: vscode.Webview, data: {
     contextBudget?: string;
     responseFormatOverride?: string;
     codeMode?: boolean;
+    enableMemoryTools?: boolean;
     memoryBankDir?: string;
     compileDbPaths?: string;
     codeModeChanged?: boolean;
@@ -839,8 +930,9 @@ async function _handleSaveConfiguration(webview: vscode.Webview, data: {
     rateLimitRpm?: number;
     timeout?: number;
     defaultMaxResults?: number;
-    enableObservationMasker?: boolean;
-    observationMaskerTurns?: number;
+        enableObservationMasker?: boolean;
+        observationMaskerTurns?: number;
+        maxResponseBytes?: number;
 }): Promise<void> {
     await handleSaveConfiguration(
         (msg: Record<string, unknown>) => { void webview.postMessage(msg); },
@@ -898,6 +990,7 @@ async function handleSaveConfiguration(
         contextBudget?: string;
         responseFormatOverride?: string;
         codeMode?: boolean;
+        enableMemoryTools?: boolean;
         memoryBankDir?: string;
         compileDbPaths?: string;
         codeModeChanged?: boolean;
@@ -913,11 +1006,13 @@ async function handleSaveConfiguration(
         defaultMaxResults?: number;
         enableObservationMasker?: boolean;
         observationMaskerTurns?: number;
+        maxResponseBytes?: number;
     }
 ): Promise<void> {
-    const { baseUrl, username, password, proxy, verifySsl, defaultProject, contextBudget, responseFormatOverride, codeMode, memoryBankDir, compileDbPaths, codeModeChanged, apiVersion, enableElicitation,
+    const { baseUrl, username, password, proxy, verifySsl, defaultProject, contextBudget, responseFormatOverride, codeMode, enableMemoryTools, memoryBankDir, compileDbPaths, codeModeChanged, apiVersion, enableElicitation,
             enableFilesApi, enableSampling, samplingModel, samplingMaxTokens, auditLogFile, rateLimitRpm,
-            timeout, defaultMaxResults, enableObservationMasker, observationMaskerTurns } = data;
+            timeout, defaultMaxResults, enableObservationMasker, observationMaskerTurns,
+            maxResponseBytes } = data;
 
     const config = vscode.workspace.getConfiguration('opengrok-mcp');
     const oldUsername = config.get<string>('username');
@@ -933,15 +1028,12 @@ async function handleSaveConfiguration(
         return;
     }
 
-    // Write to OS keychain so server can auto-read on startup
+    // Write to OS keychain so server can auto-read on startup.
+    // Explicit saves always win over the background no-clobber guard.
     if (username && finalPassword) {
-        try {
-            const { Entry } = await import('@napi-rs/keyring');
-            new Entry('opengrok-mcp', username).setPassword(finalPassword);
-        } catch (keychainErr) {
-            log(`Warning: OS keychain unavailable (${keychainErr}). Server will rely on env OPENGROK_PASSWORD or encrypted file fallback.`);
+        if (syncServerCredentials(baseUrl, username, finalPassword, log, { overwriteExisting: true })) {
+            _credentialsSynced = true;
         }
-        _credentialsSynced = true;
     }
 
     // Store password BEFORE config updates so credentials are never lost if a
@@ -965,6 +1057,7 @@ async function handleSaveConfiguration(
     if (contextBudget)                      updates.push(config.update('contextBudget', contextBudget, G));
     if (responseFormatOverride !== undefined) updates.push(config.update('responseFormatOverride', responseFormatOverride || undefined, G));
     if (codeMode !== undefined)             updates.push(config.update('codeMode', codeMode, G));
+    if (enableMemoryTools !== undefined)      updates.push(config.update('enableMemoryTools', enableMemoryTools, G));
     if (memoryBankDir !== undefined)        updates.push(config.update('memoryBankDir', memoryBankDir || undefined, G));
     if (compileDbPaths !== undefined)       updates.push(config.update('compileDbPaths', compileDbPaths || undefined, G));
     if (apiVersion !== undefined)           updates.push(config.update('apiVersion', apiVersion || 'v1', G));
@@ -979,7 +1072,13 @@ async function handleSaveConfiguration(
     if (defaultMaxResults !== undefined)         updates.push(config.update('defaultMaxResults', defaultMaxResults, G));
     if (enableObservationMasker !== undefined)   updates.push(config.update('enableObservationMasker', enableObservationMasker, G));
     if (observationMaskerTurns !== undefined)    updates.push(config.update('observationMaskerTurns', observationMaskerTurns, G));
+    if (maxResponseBytes !== undefined)         updates.push(config.update('maxResponseBytes', maxResponseBytes, G));
     await Promise.all(updates);
+
+    // Bump the settings nonce so provideMcpServerDefinitions returns a new
+    // version, causing VS Code to restart the server with fresh config.
+    const prevNonce = extensionContext?.globalState.get<number>(SETTINGS_NONCE_KEY) ?? 0;
+    await extensionContext?.globalState.update(SETTINGS_NONCE_KEY, prevNonce + 1);
 
     log(`Configuration saved for user: ${username}`);
     updateStatusBar('ready');

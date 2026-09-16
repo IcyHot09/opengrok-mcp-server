@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { MemoryBank } from '../server/memory-bank.js';
+import { MemoryBank } from '../server/memory/memory-bank.js';
 
 describe('MemoryBank.getStatusLine()', () => {
   let tmpDir: string;

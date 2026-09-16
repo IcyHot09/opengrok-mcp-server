@@ -5,8 +5,8 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { sanitizeSandboxError } from '../server/sandbox.js';
-import { auditLog, configureAuditLog, exportAuditLogAsCSV, exportAuditLogAsJSON, getAuditWriteQueue } from '../server/audit.js';
+import { sanitizeSandboxError } from '../server/sandbox/index.js';
+import { auditLog, configureAuditLog, exportAuditLogAsCSV, exportAuditLogAsJSON, getAuditWriteQueue } from '../server/transport/audit.js';
 
 // ---------------------------------------------------------------------------
 // Task 4.10 — sanitizeSandboxError

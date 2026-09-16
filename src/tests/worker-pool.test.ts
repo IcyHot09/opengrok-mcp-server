@@ -13,7 +13,7 @@ vi.mock("worker_threads", () => ({
 }));
 
 // Import AFTER mock is registered
-import { SandboxWorkerPool } from "../server/worker-pool.js";
+import { SandboxWorkerPool } from "../server/sandbox/worker-pool.js";
 import { Worker } from "worker_threads";
 
 const MockWorker = Worker as unknown as ReturnType<typeof vi.fn>;

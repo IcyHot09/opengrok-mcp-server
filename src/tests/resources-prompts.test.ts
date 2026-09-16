@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fsp from 'fs/promises';
 import { createServer } from '../server/server.js';
-import { MemoryBank } from '../server/memory-bank.js';
+import { MemoryBank } from '../server/memory/memory-bank.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Config } from '../server/config.js';
@@ -45,6 +45,7 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
     OPENGROK_DEFAULT_PROJECT: 'release-2.x',
     OPENGROK_CONTEXT_BUDGET: 'minimal',
     OPENGROK_CODE_MODE: false,
+    OPENGROK_ENABLE_MEMORY_TOOLS: true,
     OPENGROK_MEMORY_BANK_DIR: '',
     OPENGROK_RESPONSE_FORMAT_OVERRIDE: '',
     ...overrides,

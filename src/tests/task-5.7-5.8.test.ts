@@ -2,7 +2,7 @@
  * Tests for Task 5.7 (API v2 support) and Task 5.8 (AI-powered health prediction).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OpenGrokClient } from '../server/client.js';
+import { OpenGrokClient } from '../server/client/index.js';
 import type { Config } from '../server/config.js';
 
 // -----------------------------------------------------------------------

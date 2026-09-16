@@ -4,9 +4,9 @@ import {
   formatSymbolContextYAML,
   formatFileContentText,
   selectFormat,
-} from '../server/formatters.js';
+} from '../server/formatters/index.js';
 import type { SearchResults, FileContent } from '../server/models.js';
-import type { SymbolContextResult } from '../server/formatters.js';
+import type { SymbolContextResult } from '../server/formatters/index.js';
 
 // ---------------------------------------------------------------------------
 // formatSearchResultsTSV

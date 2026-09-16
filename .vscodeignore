@@ -11,9 +11,24 @@ node_modules/
 .vscode-test/
 package-lock.json
 
-# Exclude extra documentation
+# Exclude extra documentation (README.md + LICENSE ship with the extension)
+AGENTS.md
 CONTRIBUTING.md
 CHANGELOG.md
+ENGINEERING.md
+SECURITY.md
+MCP_CLIENTS.md
+
+# Dev build sourcemaps — never ship in the VSIX (release builds disable them,
+# but a local `npm run compile` before `npm run vsix` would otherwise leak them)
+**/*.map
+
+# Local env files — may contain secrets, never ship (template included: not needed at runtime)
+.env*
+
+# Package artifacts must never be bundled into themselves
+*.vsix
+*.tgz
 
 # Exclude backups
 *.bak
@@ -26,8 +41,9 @@ CHANGELOG.md
 # Exclude vitest config
 vitest.config.ts
 
-# Exclude coverage reports
+# Exclude coverage reports and local logs
 coverage/
+*.log
 
 # Exclude eslint config
 eslint.config.mjs
@@ -44,6 +60,12 @@ eslint.config.mjs
 
 # Exclude standalone scripts
 scripts/
+
+# Exclude grammar source staging dir — runtime loads from out/grammars/, not grammars/
+grammars/
+
+# Exclude npm packaging metadata — meaningless inside a VSIX
+.npmignore
 
 # Exclude evaluation / skills / local docs
 evaluation.xml

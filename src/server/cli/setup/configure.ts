@@ -4,6 +4,13 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { parse as tomlParse, stringify as tomlStringify } from '@iarna/toml';
 import type { JsonMap, AnyJson } from '@iarna/toml';
+import {
+  getSetting,
+  getSettingsForSurface,
+  settingFields,
+  validateSettingValue,
+} from '../../../shared/settings-catalog.js';
+import type { SettingField } from '../../../shared/settings-catalog.js';
 
 export interface McpConfig {
   url: string;
@@ -13,6 +20,7 @@ export interface McpConfig {
   verifySsl?: boolean;
   contextBudget?: string;
   codeMode?: boolean;
+  enableMemoryTools?: boolean;
   defaultProject?: string;
   enableElicitation?: boolean;
   proxy?: string;
@@ -30,6 +38,11 @@ export interface McpConfig {
   defaultMaxResults?: string;
   enableObservationMasker?: boolean;
   observationMaskerTurns?: string;
+  passwordFile?: string;
+  maxResponseBytes?: string;
+  strictSsrf?: boolean;
+  jwtIssuer?: string;
+  grammarDir?: string;
 }
 
 /** Build the env var object for a given config — only non-default values are written. */
@@ -40,8 +53,9 @@ export function buildEnv(config: McpConfig): Record<string, string> {
   if (config.contextBudget && config.contextBudget !== 'standard')
                                                            env['OPENGROK_CONTEXT_BUDGET'] = config.contextBudget;
   if (config.codeMode === false)                           env['OPENGROK_CODE_MODE'] = 'false';
+  if (config.enableMemoryTools)                            env['OPENGROK_ENABLE_MEMORY_TOOLS'] = 'true';
   if (config.defaultProject)                               env['OPENGROK_DEFAULT_PROJECT'] = config.defaultProject;
-  if (config.enableElicitation)                            env['OPENGROK_ENABLE_ELICITATION'] = 'true';
+  if (config.enableElicitation === false)                  env['OPENGROK_ENABLE_ELICITATION'] = 'false';
   if (config.proxy) {
     env['HTTP_PROXY'] = config.proxy;
     env['HTTPS_PROXY'] = config.proxy;
@@ -64,6 +78,12 @@ export function buildEnv(config: McpConfig): Record<string, string> {
   if (config.enableObservationMasker)                      env['OPENGROK_ENABLE_OBSERVATION_MASKER'] = 'true';
   if (config.observationMaskerTurns && config.observationMaskerTurns !== '10')
                                                            env['OPENGROK_OBSERVATION_MASKER_TURNS'] = config.observationMaskerTurns;
+  if (config.passwordFile)                               env['OPENGROK_PASSWORD_FILE'] = config.passwordFile;
+  if (config.maxResponseBytes && config.maxResponseBytes !== '0')
+                                                           env['OPENGROK_MAX_RESPONSE_BYTES'] = config.maxResponseBytes;
+  if (config.strictSsrf)                                 env['OPENGROK_STRICT_SSRF'] = 'true';
+  if (config.jwtIssuer)                                  env['OPENGROK_JWT_ISSUER'] = config.jwtIssuer;
+  if (config.grammarDir)                                 env['OPENGROK_GRAMMAR_DIR'] = config.grammarDir;
   return env;
 }
 
@@ -229,4 +249,261 @@ export function configureCodex(config: McpConfig): void {
 
   existing['mcp_servers'] = filtered as unknown as AnyJson;
   writeFileSync(configPath, tomlStringify(existing), 'utf8');
+}
+
+// ---------------------------------------------------------------------------
+// Non-interactive single-setting update (`setup --set key=value`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a user-supplied key to its catalog field. Accepts the canonical
+ * camelCase id, an OPENGROK_* env var, or the legacy `url` / `opengrokBaseUrl`
+ * aliases for the base URL.
+ */
+function resolveSetField(key: string): SettingField | undefined {
+  if (key === 'url' || key === 'baseUrl' || key === 'opengrokBaseUrl') {
+    try {
+      return getSetting('baseUrl');
+    } catch {
+      return undefined;
+    }
+  }
+  if (key === 'OPENGROK_PROXY' || key === 'HTTPS_PROXY') {
+    try {
+      return getSetting('proxy');
+    } catch {
+      return undefined;
+    }
+  }
+  try {
+    return getSetting(key);
+  } catch {
+    // Fall through to env-var lookup.
+  }
+  return settingFields.find((field) => field.env === key);
+}
+
+/** Valid `setup --set` key names (canonical camelCase ids, secrets excluded). */
+export function listSetKeys(): string[] {
+  return getSettingsForSurface('cli')
+    .filter((field) => !field.secret)
+    .map((field) => field.id);
+}
+
+/** Split a `key=value` argument on the first `=`. Throws on malformed input. */
+export function parseSetArg(arg: string): { key: string; value: string } {
+  const eq = arg.indexOf('=');
+  if (eq <= 0) {
+    throw new Error(`Expected key=value, got "${arg}". Valid keys: ${listSetKeys().join(', ')}`);
+  }
+  return { key: arg.slice(0, eq).trim(), value: arg.slice(eq + 1).trim() };
+}
+
+/**
+ * Validate a `--set` key/value pair and normalize it to an env var assignment.
+ * Returns `{ env, value }` where an empty value means "delete the var".
+ * Passwords are refused — use the interactive wizard (keychain storage) instead.
+ */
+export function resolveSetKey(key: string, value: string): { env: string; value: string } {
+  if (/^(password|OPENGROK_PASSWORD)$/i.test(key)) {
+    throw new Error('Refusing to store a password via --set (it would land in shell history). Run `opengrok-mcp setup` instead.');
+  }
+  const field = resolveSetField(key);
+  if (!field || !field.surfaces.includes('cli')) {
+    throw new Error(`Unknown setting "${key}". Valid keys: ${listSetKeys().join(', ')}`);
+  }
+  if (field.secret) {
+    throw new Error('Refusing to store a password via --set (it would land in shell history). Run `opengrok-mcp setup` instead.');
+  }
+  if (!field.env) {
+    throw new Error(`Unknown setting "${key}". Valid keys: ${listSetKeys().join(', ')}`);
+  }
+  if (value === '') {
+    const clearable =
+      field.type === 'string' ||
+      field.type === 'url' ||
+      (field.type === 'enum' && field.default === '');
+    if (!clearable) {
+      throw new Error(`"${key}" requires a value.`);
+    }
+    return { env: field.env, value: '' };
+  }
+  switch (field.type) {
+    case 'boolean':
+      if (value !== 'true' && value !== 'false') throw new Error(`"${key}" must be true or false.`);
+      return { env: field.env, value };
+    case 'enum': {
+      const choices = field.options?.map((option) => option.value) ?? [];
+      if (!choices.includes(value)) throw new Error(`"${key}" must be one of: ${choices.join(', ')}.`);
+      return { env: field.env, value };
+    }
+    case 'integer': {
+      const n = Number(value);
+      const minimum = field.minimum ?? 1;
+      if (!Number.isInteger(n)) {
+        throw new Error(
+          minimum === 0
+            ? `"${key}" must be a non-negative integer (0 = budget default).`
+            : `"${key}" must be a positive integer.`,
+        );
+      }
+      if (field.minimum !== undefined && n < field.minimum) {
+        if (field.minimum === 1 || field.minimum === 0) {
+          throw new Error(
+            field.minimum === 0
+              ? `"${key}" must be a non-negative integer (0 = budget default).`
+              : `"${key}" must be a positive integer.`,
+          );
+        }
+        throw new Error(`"${key}" must be a number greater than or equal to ${field.minimum}.`);
+      }
+      if (field.maximum !== undefined && n > field.maximum) {
+        throw new Error(`"${key}" must be a number less than or equal to ${field.maximum}.`);
+      }
+      return { env: field.env, value: String(n) };
+    }
+    case 'url': {
+      const validation = validateSettingValue(field, value);
+      if (validation) throw new Error(`"${key}": ${validation}.`);
+      return { env: field.env, value };
+    }
+    default:
+      return { env: field.env, value };
+  }
+}
+
+/** Apply a normalized assignment to a stored env object (empty value deletes). */
+export function applyEnvPatch(env: Record<string, string>, entry: { env: string; value: string }): Record<string, string> {
+  if (entry.value === '') {
+    const { [entry.env]: _dropped, ...rest } = env;
+    void _dropped;
+    return rest;
+  }
+  return { ...env, [entry.env]: entry.value };
+}
+
+function claudeConfigPath(home: string): string {
+  return join(home, '.claude.json');
+}
+
+function copilotConfigPath(home: string): string {
+  return join(home, '.copilot', 'mcp-config.json');
+}
+
+function codexConfigPath(home: string): string {
+  return process.platform === 'win32'
+    ? join(process.env['APPDATA'] ?? home, 'codex', 'config.toml')
+    : join(home, '.config', 'codex', 'config.toml');
+}
+
+function vscodeMcpPath(home: string): string {
+  if (process.platform === 'win32') {
+    return join(process.env['APPDATA'] ?? home, 'Code', 'User', 'mcp.json');
+  }
+  if (process.platform === 'darwin') {
+    return join(home, 'Library', 'Application Support', 'Code', 'User', 'mcp.json');
+  }
+  return join(process.env['XDG_CONFIG_HOME'] ?? join(home, '.config'), 'Code', 'User', 'mcp.json');
+}
+
+/**
+ * Update one setting in every MCP client config that already contains an
+ * opengrok-mcp entry. Only existing entries are patched — run `setup` first
+ * to create them. Returns the names of updated clients.
+ * `homeOverride` redirects home-directory resolution (tests).
+ */
+export function updateStoredSetting(key: string, value: string, homeOverride?: string): string[] {
+  const entry = resolveSetKey(key, value);
+  const home = homeOverride ?? homedir();
+  const updated: string[] = [];
+
+  const patchFileEnv = (
+    file: string,
+    read: (text: string) => Record<string, string> | null,
+    write: (text: string, env: Record<string, string>) => string,
+  ): boolean => {
+    let text: string;
+    try {
+      text = readFileSync(file, 'utf8');
+    } catch { return false; }
+    const env = read(text);
+    if (!env) return false;
+    writeFileSync(file, write(text, applyEnvPatch(env, entry)), 'utf8');
+    return true;
+  };
+
+  // Claude Code — patch env in every project block containing opengrok-mcp
+  try {
+    const file = claudeConfigPath(home);
+    if (existsSync(file)) {
+      const data = JSON.parse(readFileSync(file, 'utf8')) as {
+        projects?: Record<string, { mcpServers?: Record<string, { env?: Record<string, string> }> }>;
+      };
+      let touched = false;
+      for (const project of Object.values(data.projects ?? {})) {
+        const srv = project.mcpServers?.['opengrok-mcp'];
+        if (srv?.env) {
+          srv.env = applyEnvPatch(srv.env, entry);
+          touched = true;
+        }
+      }
+      if (touched) {
+        writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+        updated.push('Claude Code');
+      }
+    }
+  } catch { /* leave file untouched on parse errors */ }
+
+  // Copilot CLI
+  if (patchFileEnv(
+    copilotConfigPath(home),
+    (text) => {
+      try {
+        const data = JSON.parse(text) as { mcpServers?: Record<string, { env?: Record<string, string> }> };
+        return data.mcpServers?.['opengrok-mcp']?.env ?? null;
+      } catch { return null; }
+    },
+    (text, env) => {
+      const data = JSON.parse(text) as { mcpServers?: Record<string, { env?: Record<string, string> }> };
+      if (data.mcpServers?.['opengrok-mcp']) data.mcpServers['opengrok-mcp'].env = env;
+      return JSON.stringify(data, null, 2);
+    },
+  )) {
+    updated.push('Copilot CLI');
+  }
+
+  // Codex (TOML)
+  try {
+    const file = codexConfigPath(home);
+    if (existsSync(file)) {
+      const toml = tomlParse(readFileSync(file, 'utf8')) as JsonMap;
+      const servers = (toml['mcp_servers'] as Array<Record<string, AnyJson>> | undefined) ?? [];
+      let touched = false;
+      for (const s of servers) {
+        if (s['name'] === 'opengrok-mcp' && s['env'] && typeof s['env'] === 'object') {
+          s['env'] = applyEnvPatch(s['env'] as Record<string, string>, entry) as unknown as AnyJson;
+          touched = true;
+        }
+      }
+      if (touched) {
+        writeFileSync(file, tomlStringify(toml), 'utf8');
+        updated.push('Codex');
+      }
+    }
+  } catch { /* leave file untouched on parse errors */ }
+
+  // VS Code mcp.json
+  try {
+    const file = vscodeMcpPath(home);
+    if (existsSync(file)) {
+      const data = JSON.parse(readFileSync(file, 'utf8')) as { servers?: Record<string, { env?: Record<string, string> }> };
+      if (data.servers?.['opengrok-mcp']?.env) {
+        data.servers['opengrok-mcp'].env = applyEnvPatch(data.servers['opengrok-mcp'].env as Record<string, string>, entry);
+        writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+        updated.push('VS Code');
+      }
+    }
+  } catch { /* leave file untouched on parse errors */ }
+
+  return updated;
 }

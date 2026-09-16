@@ -6,13 +6,15 @@
 import * as os from "os";
 import * as path from "path";
 import * as fs from "fs";
-import { OpenGrokClient } from "./client.js";
+import { OpenGrokClient } from "./client/index.js";
 import { loadConfig } from "./config.js";
-import { logger } from "./logger.js";
+import { logger } from "./utils/logger.js";
 import { runServer } from "./server.js";
-import { MemoryBank } from "./memory-bank.js";
-import { configureAuditLog, exportAuditLogAsCSV, exportAuditLogAsJSON } from "./audit.js";
+import { MemoryBank } from "./memory/memory-bank.js";
+import { configureAuditLog, exportAuditLogAsCSV, exportAuditLogAsJSON } from "./transport/audit.js";
 import { retrievePassword } from "./cli/keychain.js";
+import { resolveCliCommand, formatUnknownCommandMessage } from "./cli/commands.js";
+export type { CliCommand } from "./cli/commands.js";
 
 declare const __VERSION__: string;
 
@@ -32,19 +34,31 @@ export function resolveConfig(): ReturnType<typeof loadConfig> {
   const username = process.env['OPENGROK_USERNAME'] ?? '';
   const envPassword = process.env['OPENGROK_PASSWORD'] ?? '';
   const passwordFile = process.env['OPENGROK_PASSWORD_FILE'] ?? '';
+  const overrides: Record<string, string> = {};
 
-  if (username && !envPassword && !passwordFile) {
-    // No password in env — try the OS keychain before calling loadConfig
-    const keychainPassword = retrievePassword(username);
-    if (keychainPassword) {
-      // Pass the keychain password as an override instead of mutating process.env.
-      // This prevents the plaintext secret from appearing in /proc/self/environ,
-      // being inherited by child processes, or being readable by native addons.
-      return loadConfig({ OPENGROK_PASSWORD: keychainPassword });
+  // OpenGrok password resolution: env > file > keychain
+  if (username && !envPassword) {
+    if (passwordFile) {
+      try {
+        const filePassword = fs.readFileSync(passwordFile, 'utf8').trim();
+        if (filePassword) overrides.OPENGROK_PASSWORD = filePassword;
+      } catch (err) {
+        logger.warn(`Failed to read OPENGROK_PASSWORD_FILE (${passwordFile}): ${err instanceof Error ? err.message : err}`);
+      }
+    }
+    if (!overrides.OPENGROK_PASSWORD) {
+      // No password in env — try the OS keychain before calling loadConfig
+      const keychainPassword = retrievePassword(username);
+      if (keychainPassword) {
+        // Pass the keychain password as an override instead of mutating process.env.
+        // This prevents the plaintext secret from appearing in /proc/self/environ,
+        // being inherited by child processes, or being readable by native addons.
+        overrides.OPENGROK_PASSWORD = keychainPassword;
+      }
     }
   }
 
-  return loadConfig();
+  return Object.keys(overrides).length > 0 ? loadConfig(overrides) : loadConfig();
 }
 
 /* v8 ignore start -- false branch falls through to main() which is integration-level */
@@ -55,23 +69,80 @@ if (process.argv.includes("--version") || process.argv.includes("-v")) {
 }
 
 /* v8 ignore start -- entry point; integration-level, not unit-testable */
-// CLI routing — handle setup/status/version subcommands
+// CLI routing — handle setup/status/version/help/export-audit subcommands
 const firstArg = process.argv[2];
+const cliCommand = resolveCliCommand(firstArg);
 
-if (firstArg === "setup" || firstArg === "--setup") {
+function printHelp(): void {
+  console.log(`opengrok-mcp — OpenGrok MCP Server CLI
+
+Usage:
+  opengrok-mcp setup [--test] [--set key=value]   Configure MCP clients (interactive wizard)
+  opengrok-mcp status                             Health check + client detection
+  opengrok-mcp export-audit [--format json|csv] [--output file]
+                                                   Export the audit log
+  opengrok-mcp version                            Print version and exit
+  opengrok-mcp help                               Show this help
+
+setup flags:
+  --test              Test the stored connection without the interactive wizard
+  --set key=value     Update one stored setting non-interactively
+                       (e.g. --set contextBudget=generous). Empty value restores
+                       the default. Passwords are refused — run setup instead.
+
+To update to the latest release: npm update -g opengrok-mcp-server`);
+}
+
+if (cliCommand === "help") {
+  printHelp();
+  process.exit(0);
+} else if (cliCommand === "version") {
+  console.log(typeof __VERSION__ !== "undefined" ? __VERSION__ : process.env.npm_package_version ?? "0.0.0");
+  process.exit(0);
+} else if (cliCommand === "setup") {
   // Dynamic import to avoid loading CLI deps in server mode
   void (async () => {
+    const rest = process.argv.slice(3);
+    if (rest.includes("--test")) {
+      const { runSetupTest } = await import("./cli/status.js");
+      await runSetupTest();
+      process.exit(process.exitCode ?? 0);
+    }
+    const setIdx = rest.indexOf("--set");
+    const setValue = setIdx >= 0
+      ? rest[setIdx + 1]
+      : rest.find((a) => a.startsWith("--set="))?.slice("--set=".length);
+    if (setIdx >= 0 || setValue !== undefined) {
+      const { parseSetArg, updateStoredSetting } = await import("./cli/setup/configure.js");
+      try {
+        if (setValue === undefined || setValue === "") {
+          throw new Error("Missing value. Usage: setup --set key=value");
+        }
+        const { key, value } = parseSetArg(setValue);
+        const updated = updateStoredSetting(key, value);
+        if (updated.length === 0) {
+          console.error("No configured clients found to update. Run `opengrok-mcp setup` first.");
+          process.exit(1);
+        } else {
+          console.log(`Updated ${key} in: ${updated.join(", ")}`);
+        }
+      } catch (e) {
+        console.error(`setup --set failed: ${(e as Error).message ?? String(e)}`);
+        process.exit(1);
+      }
+      process.exit(0);
+    }
     const { runSetup } = await import("./cli/setup/wizard.js");
     await runSetup();
     process.exit(0);
   })();
-} else if (firstArg === "status" || firstArg === "--status") {
+} else if (cliCommand === "status") {
   void (async () => {
     const { runStatus } = await import("./cli/status.js");
     await runStatus();
     process.exit(0);
   })();
-} else if (firstArg === "export-audit") {
+} else if (cliCommand === "export-audit") {
   // Handle CLI commands like export-audit
   const args = process.argv.slice(3);
   let format = "json";
@@ -107,7 +178,7 @@ if (firstArg === "setup" || firstArg === "--setup") {
     console.error(`Export failed: ${err}`);
     process.exit(1);
   }
-} else {
+} else if (cliCommand === "server") {
   // cmd === 'server' || cmd === undefined || cmd === '--server' → normal MCP server startup
   async function main(): Promise<void> {
     const config = resolveConfig();
@@ -133,7 +204,16 @@ if (firstArg === "setup" || firstArg === "--setup") {
         : path.join(xdgConfig, "opengrok-mcp", "memory-bank"));
 
     const memoryBank = new MemoryBank(memoryBankDir);
-    await memoryBank.ensureDir();
+    // Skip directory creation when memory tools are disabled — nothing will read them.
+    if (config.OPENGROK_ENABLE_MEMORY_TOOLS) {
+      await memoryBank.ensureDir();
+    }
+
+    // Best-effort grammar inventory — never blocks startup.
+    try {
+      const { logGrammarStatus } = await import("./intelligence/tree-sitter.js");
+      logGrammarStatus();
+    } catch { /* tree-sitter is optional */ }
 
     await runServer(client, config, memoryBank, resolveConfig);
   }
@@ -142,5 +222,9 @@ if (firstArg === "setup" || firstArg === "--setup") {
     logger.error("Fatal error:", err);
     process.exit(1);
   });
+} else {
+  console.error(formatUnknownCommandMessage(firstArg ?? ""));
+  printHelp();
+  process.exit(1);
 }
 /* v8 ignore stop */

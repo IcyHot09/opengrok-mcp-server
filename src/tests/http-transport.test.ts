@@ -6,7 +6,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import * as http from "node:http";
-import { startHttpTransport, validateBearerToken, type McpServerFactory } from "../server/http-transport.js";
+import { startHttpTransport, validateBearerToken, type McpServerFactory } from "../server/transport/http-transport.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 const makeFactory = (): McpServerFactory => () =>
@@ -647,7 +647,7 @@ describe("RBAC for multi-user HTTP deployments (Task 5.10)", () => {
           port,
           method: "POST",
           headers: { ...initHeaders, "Mcp-Session-Id": sessionId },
-          body: toolCallBody("opengrok_search"),
+          body: toolCallBody("opengrok_search_code"),
         });
         // Should allow (not 403)
         expect([200, 400, 500]).toContain(toolRes.status);
@@ -838,7 +838,7 @@ describe("RBAC for multi-user HTTP deployments (Task 5.10)", () => {
     }
   });
 
-  it("readonly allowed on opengrok_search", async () => {
+  it("readonly allowed on opengrok_search_code", async () => {
     const port = BASE_RBAC_PORT + 6;
     const { close } = await startHttpTransport(makeFactory(), {
       port,
@@ -866,7 +866,7 @@ describe("RBAC for multi-user HTTP deployments (Task 5.10)", () => {
           port,
           method: "POST",
           headers: { ...initHeaders, "Mcp-Session-Id": sessionId },
-          body: toolCallBody("opengrok_search"),
+          body: toolCallBody("opengrok_search_code"),
         });
         // Should NOT be 403
         expect(toolRes.status).not.toBe(403);

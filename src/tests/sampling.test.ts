@@ -7,9 +7,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as os from 'os';
 import * as path from 'path';
 import * as fsp from 'fs/promises';
-import { sampleOrNull } from '../server/sampling.js';
+import { sampleOrNull } from '../server/protocol/sampling.js';
 import { createServer } from '../server/server.js';
-import { MemoryBank } from '../server/memory-bank.js';
+import { MemoryBank } from '../server/memory/memory-bank.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Config } from '../server/config.js';
@@ -18,15 +18,15 @@ import type { Config } from '../server/config.js';
 // Mock executeInSandbox so Code Mode tests don't need the compiled worker
 // ---------------------------------------------------------------------------
 
-vi.mock('../server/sandbox.js', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../server/sandbox.js')>();
+vi.mock('../server/sandbox/sandbox.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../server/sandbox/index.js')>();
   return {
     ...original,
     executeInSandbox: vi.fn().mockResolvedValue('{"result": "mock output"}'),
   };
 });
 
-import { executeInSandbox } from '../server/sandbox.js';
+import { executeInSandbox } from '../server/sandbox/index.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

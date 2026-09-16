@@ -39,10 +39,39 @@ Structured investigation methodology for large codebases. Use this alongside the
 
 ```
 1. Identify the changed symbol/file
-2. opengrok_get_symbol_context with max_refs: 50 → find all callers
+2. opengrok_get_symbol_context with max_refs: 20 → find all callers
 3. For each caller module: opengrok_get_file_symbols → understand the module
 4. Group by layer/component → classify impact
 5. Record findings in investigation-log.md
+```
+
+## Example: Full Bug Investigation
+
+```javascript
+// Step 1: Find where the crash happens
+const defs = env.opengrok.search('handleCrash', { searchType: 'defs', fileType: 'cxx' });
+const crashFile = defs.results[0];
+
+// Step 2: Read the implementation (expand to the enclosing function body)
+const impl = env.opengrok.getFileContent(crashFile.project, crashFile.path, {
+  startLine: crashFile.matches[0].lineNumber - 5,
+  endLine: crashFile.matches[0].lineNumber + 30,
+  expandFunction: true,
+});
+
+// Step 3: Check who changed it recently
+const hist = env.opengrok.getFileHistory(crashFile.project, crashFile.path, { maxEntries: 5 });
+const recentCommit = hist.entries[0];
+
+// Step 4: Blame the suspicious region
+const bl = env.opengrok.getFileAnnotate(crashFile.project, crashFile.path);
+
+return {
+  file: crashFile.path,
+  code: impl.content,
+  lastChange: recentCommit,
+  annotations: bl.lines?.slice(0, 10),
+};
 ```
 
 ## Memory Usage During Investigation
@@ -69,6 +98,45 @@ Before final answer (MANDATORY):
      status: complete
 ```
 
+### active-task.md — Current state (overwrite)
+
+```yaml
+task: Investigating crash in EventLoop socket handling
+started: 2026-04-11
+last_symbol: EventLoop::handleCrash
+last_file: src/server/EventLoop.cpp
+next_step: Check blame on the timeout path
+open_questions:
+  - Is the socket handle reused after close?
+  - Was the timeout value changed recently?
+status: investigating
+```
+
+### investigation-log.md — Findings (append)
+
+```
+## 2026-04-11 14:32 — EventLoop timeout analysis
+
+**Searched:** `handleCrash` refs in server module
+**Found:** 3 call sites set a timeout, all use a hardcoded 30s
+**Implication:** Timeout isn't the issue — something else causes the hang
+
+## 2026-04-11 14:45 — Connection reuse bug
+
+**Searched:** blame on EventLoop.cpp:263 (handleCrash)
+**Found:** Last modified recently by the networking team
+**Implication:** Possible regression in the latest change
+```
+
+## Investigation Principles
+
+1. **Search before reading** — Don't read entire files. Find the right lines first.
+2. **Use batchSearch for parallel hypotheses** — Test multiple theories in one call.
+3. **Record as you go** — Write findings to memory after each significant discovery.
+4. **Narrow progressively** — Start broad (cross-project), narrow to specific files.
+5. **Use blame for attribution** — When you find the bug, blame tells you who and when.
+6. **Expand to function boundaries** — Pass `expandFunction: true` in Code Mode to get the full enclosing function instead of guessing line ranges.
+
 ## Code Mode for Deep Investigations
 
 For 5+ step investigations, switch to Code Mode — it saves 75-95% of tokens:
@@ -82,8 +150,9 @@ const [defs, refs, history] = env.opengrok.batchSearch([
 ]);
 
 const defPath = defs.results[0]?.path;
+const defProject = defs.results[0]?.project;
 const blame = defPath
-  ? env.opengrok.getFileAnnotate('proj', defPath, { startLine: 1, endLine: 50 })
+  ? env.opengrok.getFileAnnotate(defProject, defPath)
   : null;
 
 return {

@@ -14,8 +14,8 @@ import {
   formatSymbolContext,
   formatFileSymbols,
   formatFileDiff,
-} from '../server/formatters.js';
-import type { SearchAndReadEntry, SymbolContextResult } from '../server/formatters.js';
+} from '../server/formatters/index.js';
+import type { SearchAndReadEntry, SymbolContextResult } from '../server/formatters/index.js';
 import type { FileDiff } from '../server/models.js';
 import type {
   SearchResults,

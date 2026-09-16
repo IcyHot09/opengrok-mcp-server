@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { buildFileOverview, buildCallChain } from '../server/intelligence.js';
-import type { OpenGrokClient } from '../server/client.js';
+import type { OpenGrokClient } from '../server/client/index.js';
 
 // ---------------------------------------------------------------------------
 // Mock client factory
@@ -86,7 +86,7 @@ describe('buildFileOverview', () => {
     await buildFileOverview(client, 'proj', 'file.cpp');
     // All three should have been called
     expect(client.getFileSymbols).toHaveBeenCalledWith('proj', 'file.cpp');
-    expect(client.getFileContent).toHaveBeenCalledWith('proj', 'file.cpp', 1, 30);
+    expect(client.getFileContent).toHaveBeenCalledWith('proj', 'file.cpp', 1, 60);
     expect(client.getFileHistory).toHaveBeenCalledWith('proj', 'file.cpp', 3);
   });
 
@@ -95,8 +95,10 @@ describe('buildFileOverview', () => {
       getFileSymbols: vi.fn().mockRejectedValue(new Error('symbols unavailable')),
     });
     const result = await buildFileOverview(client, 'proj', 'file.cpp');
-    // Should still return a result without throwing
-    expect(result.topLevelSymbols).toEqual([]);
+    // Should still return a result without throwing.
+    // With tree-sitter support for .cpp, symbols may be extracted from file content
+    // (the mock content has `void foo() {}`), so topLevelSymbols may be non-empty.
+    expect(Array.isArray(result.topLevelSymbols)).toBe(true);
     expect(result.recentAuthors.length).toBeGreaterThan(0); // history succeeded
   });
 
@@ -110,6 +112,15 @@ describe('buildFileOverview', () => {
   });
 
   it('includes topLevelSymbols from file symbols', async () => {
+    // Provide content that actually contains EventLoop so tree-sitter can find it.
+    // When tree-sitter returns results, they take precedence over OpenGrok symbols.
+    const cppContent = [
+      '#include "EventLoop.h"',
+      'class EventLoop {',
+      'public:',
+      '  void run() {}',
+      '};',
+    ].join('\n');
     const client = makeClient({
       getFileSymbols: vi.fn().mockResolvedValue({
         project: 'proj', path: 'file.cpp',
@@ -118,11 +129,27 @@ describe('buildFileOverview', () => {
           { symbol: 'run', type: 'function', line: 20, lineStart: 20, lineEnd: 30, signature: '()', namespace: null },
         ],
       }),
+      getFileContent: vi.fn().mockResolvedValue({
+        project: 'proj', path: 'file.cpp',
+        content: cppContent,
+        lineCount: 5, sizeBytes: cppContent.length, startLine: 1,
+      }),
     });
     const result = await buildFileOverview(client, 'proj', 'file.cpp');
     expect(result.topLevelSymbols.length).toBeGreaterThan(0);
-    const symbols = result.topLevelSymbols.map(s => s.symbol);
-    expect(symbols).toContain('EventLoop');
+    // Tree-sitter or OpenGrok should find EventLoop in this content
+    expect(result.topLevelSymbols.some((s) => s.symbol.includes('EventLoop'))).toBe(true);
+  });
+
+  it('throws a contextual error when symbols, content, and history all fail', async () => {
+    const client = makeClient({
+      getFileSymbols: vi.fn().mockRejectedValue(new Error('no symbols')),
+      getFileContent: vi.fn().mockRejectedValue(new Error('no content')),
+      getFileHistory: vi.fn().mockRejectedValue(new Error('no history')),
+    });
+    await expect(buildFileOverview(client, 'proj', 'missing.cpp')).rejects.toThrow(
+      /getFileOverview: project 'proj', path 'missing.cpp'/
+    );
   });
 });
 
@@ -141,26 +168,94 @@ describe('buildCallChain', () => {
   it('callers direction: makes a refs search', async () => {
     const client = makeClient();
     await buildCallChain(client, 'MyFn', 'callers', 1);
-    expect(client.search).toHaveBeenCalledWith('MyFn', 'refs', undefined, 10, 0);
+    expect(client.search).toHaveBeenCalledWith('MyFn', 'refs', undefined, 10, 0, undefined);
   });
 
-  it('callees direction: always returns empty callees array', async () => {
+  it('callees direction: returns callees via tree-sitter AST analysis', async () => {
+    const cppSource = [
+      '#include "app.h"',
+      'int computeTotal(int a, int b) {',
+      '  return a + b;',
+      '}',
+      'void processRequest() {',
+      '  int total = computeTotal(1, 2);',
+      '  logResult(total);',
+      '}',
+    ].join('\n');
+    const defPath = '/src/app.cpp';
     const client = makeClient({
-      search: vi.fn().mockResolvedValue({
-        query: 'MyFn', searchType: 'refs', totalCount: 1, timeMs: 1,
-        results: [{ project: 'p', path: 'f.cpp', matches: [{ lineNumber: 10, lineContent: 'MyFn()' }] }],
-        startIndex: 0, endIndex: 1, hasMore: false,
+      search: vi.fn().mockImplementation((query: string, type: string) => {
+        if (type === 'defs') {
+          const lineNumber = query === 'processRequest' ? 5 : 2;
+          return Promise.resolve({
+            query, searchType: type, totalCount: 1, timeMs: 1,
+            results: [{ project: 'proj', path: defPath, matches: [{ lineNumber, lineContent: `${query}()` }] }],
+            startIndex: 0, endIndex: 1, hasMore: false,
+          });
+        }
+        return Promise.resolve({
+          query, searchType: type, totalCount: 0, timeMs: 1,
+          results: [], startIndex: 0, endIndex: 0, hasMore: false,
+        });
+      }),
+      getFileContent: vi.fn().mockResolvedValue({
+        project: 'proj', path: defPath, content: cppSource,
+        lineCount: 8, sizeBytes: cppSource.length, startLine: 1,
       }),
     });
-    const result = await buildCallChain(client, 'MyFn', 'callees', 2);
-    expect(result.callees).toEqual([]);
+    const result = await buildCallChain(client, 'processRequest', 'callees', 1, 'proj');
+    expect(result.callees.length).toBeGreaterThan(0);
+    const names = result.callees.map((c) => c.symbol);
+    expect(names).toContain('computeTotal');
+    expect(names).toContain('logResult');
   });
 
-  it('callees direction: does NOT make API search calls', async () => {
-    const client = makeClient();
-    await buildCallChain(client, 'MyFn', 'callees', 2);
-    // With callees direction, no search should be made
-    expect(client.search).not.toHaveBeenCalled();
+  it('callees direction: empty callees with a note for unsupported languages', async () => {
+    const client = makeClient({
+      search: vi.fn().mockImplementation((query: string, type: string) => {
+        if (type === 'defs') {
+          return Promise.resolve({
+            query, searchType: type, totalCount: 1, timeMs: 1,
+            results: [{ project: 'proj', path: '/src/query.xyz', matches: [{ lineNumber: 1, lineContent: query }] }],
+            startIndex: 0, endIndex: 1, hasMore: false,
+          });
+        }
+        return Promise.resolve({
+          query, searchType: type, totalCount: 0, timeMs: 1,
+          results: [], startIndex: 0, endIndex: 0, hasMore: false,
+        });
+      }),
+    });
+    const result = await buildCallChain(client, 'mysteryFn', 'callees', 1, 'proj');
+    expect(result.callees).toEqual([]);
+    expect(result.calleesNote).toMatch(/not support/);
+  });
+
+  it('callees direction: leaf functions report no callees found', async () => {
+    const pySource = 'def lonely():\n    pass\n';
+    const defPath = '/src/util.py';
+    const client = makeClient({
+      search: vi.fn().mockImplementation((query: string, type: string) => {
+        if (type === 'defs') {
+          return Promise.resolve({
+            query, searchType: type, totalCount: 1, timeMs: 1,
+            results: [{ project: 'proj', path: defPath, matches: [{ lineNumber: 1, lineContent: 'def lonely():' }] }],
+            startIndex: 0, endIndex: 1, hasMore: false,
+          });
+        }
+        return Promise.resolve({
+          query, searchType: type, totalCount: 0, timeMs: 1,
+          results: [], startIndex: 0, endIndex: 0, hasMore: false,
+        });
+      }),
+      getFileContent: vi.fn().mockResolvedValue({
+        project: 'proj', path: defPath, content: pySource,
+        lineCount: 2, sizeBytes: pySource.length, startLine: 1,
+      }),
+    });
+    const result = await buildCallChain(client, 'lonely', 'callees', 1, 'proj');
+    expect(result.callees).toEqual([]);
+    expect(result.calleesNote).toMatch(/Leaf function/);
   });
 
   it('caps depth at MAX_CALL_CHAIN_DEPTH (4)', async () => {
@@ -302,5 +397,121 @@ describe('langFromPath', () => {
   it('maps .ts to typescript', () => expect(langFromPath('src/index.ts')).toBe('typescript'));
   it('maps .py to python', () => expect(langFromPath('main.py')).toBe('python'));
   it('maps .go to go', () => expect(langFromPath('cmd/main.go')).toBe('go'));
+  it('maps OpenGrok analyzer aliases (cxx, sh, golang extensions)', () => {
+    expect(langFromPath('a.cxx')).toBe('cpp');
+    expect(langFromPath('run.sh')).toBe('bash');
+    expect(langFromPath('x.ps1')).toBe('powershell');
+  });
   it('falls back to extension for unknown types', () => expect(langFromPath('foo.xyz')).toBe('xyz'));
+});
+
+// ---------------------------------------------------------------------------
+// AST-aware truncation + expansion (require tree-sitter grammars in grammars/)
+// ---------------------------------------------------------------------------
+import { truncateAtBoundary, expandToFunctionBoundary } from '../server/intelligence/ast-truncation.js';
+import { extractCallees } from '../server/intelligence/callee-extractor.js';
+import { getTreeSitterLineBudget, commonPrefixSegments } from '../server/intelligence.js';
+
+const PY_SRC = 'def alpha():\n    return 1\n\ndef beta():\n    return 2\n';
+
+describe('truncateAtBoundary', () => {
+  it('returns full content when the file fits within maxLines', async () => {
+    const result = await truncateAtBoundary(PY_SRC, 50, 'python');
+    expect(result).not.toBeNull();
+    expect(result!.content).toBe(PY_SRC);
+    expect(result!.truncatedAtLine).toBe(result!.totalLines);
+    expect(result!.symbols.map((s) => s.name)).toEqual(
+      expect.arrayContaining(['alpha', 'beta'])
+    );
+  });
+
+  it('truncates at a symbol boundary instead of mid-definition', async () => {
+    // alpha spans lines 1-2, beta spans lines 4-5 — maxLines 3 must stop at line 2
+    const result = await truncateAtBoundary(PY_SRC, 3, 'python');
+    expect(result).not.toBeNull();
+    expect(result!.truncatedAtLine).toBe(2);
+    expect(result!.includedLines).toBe(2);
+    expect(result!.content).toContain('alpha');
+    expect(result!.content).not.toContain('beta');
+  });
+
+  it('returns null for unsupported languages', async () => {
+    await expect(truncateAtBoundary(PY_SRC, 3, 'notalanguage')).resolves.toBeNull();
+  });
+});
+
+describe('expandToFunctionBoundary', () => {
+  it('expands a match line to its enclosing function body', async () => {
+    const result = await expandToFunctionBoundary(PY_SRC, 4, 'python', 50);
+    expect(result).not.toBeNull();
+    expect(result!.functionName).toBe('beta');
+    expect(result!.functionStartLine).toBe(4);
+    expect(result!.expandedContent).toContain('return 2');
+    expect(result!.expandedContent).not.toContain('alpha');
+  });
+
+  it('returns null when the match line is outside any function', async () => {
+    await expect(expandToFunctionBoundary(PY_SRC, 3, 'python', 50)).resolves.toBeNull();
+  });
+
+  it('returns null for unsupported languages', async () => {
+    await expect(expandToFunctionBoundary(PY_SRC, 4, 'notalanguage', 50)).resolves.toBeNull();
+  });
+});
+
+describe('extractCallees', () => {
+  const CPP_SRC = [
+    'int helper(int x) {',
+    '  return x * 2;',
+    '}',
+    'int main() {',
+    '  int y = helper(21);',
+    '  return y;',
+    '}',
+  ].join('\n');
+
+  it('extracts calls within a C++ function body', async () => {
+    const callees = await extractCallees(CPP_SRC, 'main', 'cpp');
+    expect(callees.map((c) => c.name)).toContain('helper');
+  });
+
+  it('returns empty array for unknown functions', async () => {
+    await expect(extractCallees(CPP_SRC, 'nope', 'cpp')).resolves.toEqual([]);
+  });
+
+  it('returns empty array for unsupported languages', async () => {
+    await expect(extractCallees(CPP_SRC, 'main', 'notalanguage')).resolves.toEqual([]);
+  });
+});
+
+describe('getTreeSitterLineBudget', () => {
+  const OLD = process.env.OPENGROK_CONTEXT_BUDGET;
+
+  afterEach(() => {
+    if (OLD === undefined) delete process.env.OPENGROK_CONTEXT_BUDGET;
+    else process.env.OPENGROK_CONTEXT_BUDGET = OLD;
+  });
+
+  it('scales 200/400/600 by context tier', () => {
+    process.env.OPENGROK_CONTEXT_BUDGET = 'minimal';
+    expect(getTreeSitterLineBudget()).toBe(200);
+    process.env.OPENGROK_CONTEXT_BUDGET = 'generous';
+    expect(getTreeSitterLineBudget()).toBe(600);
+    process.env.OPENGROK_CONTEXT_BUDGET = 'standard';
+    expect(getTreeSitterLineBudget()).toBe(400);
+  });
+
+  it('defaults to 400 when unset or unknown', () => {
+    delete process.env.OPENGROK_CONTEXT_BUDGET;
+    expect(getTreeSitterLineBudget()).toBe(400);
+    process.env.OPENGROK_CONTEXT_BUDGET = 'bogus';
+    expect(getTreeSitterLineBudget()).toBe(400);
+  });
+});
+
+describe('commonPrefixSegments', () => {
+  it('counts shared leading segments', () => {
+    expect(commonPrefixSegments('/src/app/a.cpp', '/src/app/b.cpp')).toBe(3);
+    expect(commonPrefixSegments('/src/a.cpp', '/other/b.cpp')).toBe(1);
+  });
 });
